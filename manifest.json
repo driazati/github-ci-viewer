@@ -1,0 +1,35 @@
+{
+	"manifest_version": 2,
+
+	"name": "CircleCI Logs on GitHub",
+	"short_name": "CircleLog",
+	"description": "View CircleCI Logs on GitHub",
+	"version": "1.0.0",
+	"author": "asdf",
+
+	"icons": { "16": "icons/icon16.png",
+		"48": "icons/icon48.png",
+		"128": "icons/icon128.png" },
+
+	"options_ui": {
+		"page": "options.html",
+		"chrome_style": true
+	},
+
+
+	"content_scripts": [{
+		"matches": [
+			"*://github.com/*"
+		],
+		"js": ["content.js"],
+		"css": ["widescreen.css"],
+		"run_at": "document_end"
+	}],
+	"permissions": [
+		"activeTab",
+		"storage",
+		"https://ajax.googleapis.com/",
+		"https://circleci.com/",
+		"https://*.amazonaws.com/"
+	]
+}
