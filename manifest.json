@@ -28,7 +28,6 @@
 	"permissions": [
 		"activeTab",
 		"storage",
-		"https://ajax.googleapis.com/",
 		"https://circleci.com/",
 		"https://*.amazonaws.com/"
 	]
