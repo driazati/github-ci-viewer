@@ -72,7 +72,10 @@ function get_builds(callback) {
 }
 
 function show_build(action_index) {
-	clear_current_display();
+	let old = clear_current_display();
+	if (this.element === old) {
+		return;
+	}
 
 	current_spinner = build_spinner(this);
 	insert_after(this.element, current_spinner);
@@ -176,8 +179,9 @@ function clear_current_display() {
 	}
 	if (current_display && current_display.previousSibling == this.element) {
 		this.element.parentNode.removeChild(current_display);
+		old = current_display;
 		current_display = undefined;
-		return;
+		return old;
 	}
 }
 
@@ -216,11 +220,18 @@ function nthFromEnd(str, pat, n) {
 }
 
 function get_build_id(link) {
+	if (!link) {
+		return;
+	}
 	let match = link.match(/\d+(?=\?)/g);
 	if (!match || match.length != 1) {
 		return;
 	}
 	return match[0];
+}
+
+function fetch_error(callback) {
+	callback("   HTTP Error", "", {}, "");
 }
 
 function fetch_log(build_id, token, action_index, callback) {
@@ -229,21 +240,27 @@ function fetch_log(build_id, token, action_index, callback) {
 			result = JSON.parse(result);
 			// let build_result = result.steps[0];
 			let i = action_index;
-			if (!i) {
+			if (i === undefined) {
 				i = default_step(result);				
 			}
 			let url = result.steps[i].actions[0].output_url;
 			let name = result.steps[i].name;
 			// let url = build_result.actions[0].output_url;
 			if (!url) {
-				callback("No log", url, result, name);
+				callback("   No log", url, result, name);
 				return;
 			}
 			request(url, {
 				success: (log) => {
 					callback(log, url, result, name);
+				},
+				error: () => {
+					fetch_log(callback);
 				}
 			})
+		},
+		error: () => {
+			fetch_error(callback);
 		}
 	});
 }
