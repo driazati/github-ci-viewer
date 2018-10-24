@@ -16,21 +16,38 @@ chrome.storage.local.get('info', (items) => {
 });
 
 let initialized = false;
+let click_handled = true;
 
-document.addEventListener('click', (event) => {
+function main(event) {
+	console.log("Document click", click_handled)
+	if (!click_handled) {
+		console.log("Re-doing");
+		initialized = false;
+		click_handled = true;
+	}
+
 	let target = event.target.closest('div.branch-action-body div.merge-status-item');
+	let body = event.target.closest('.merge-status-list');
+	// let target = body.querySelector('div.merge-status-item')
 	if (!target) {
 		return;
 	}
 
 	if (!initialized) {
 		initialized = true;
-		get_builds((builds) => {
+		get_builds(body, (builds) => {
 			builds.forEach((build) => {
-				// Add click event
-				build.element.addEventListener('click', () => {
+				function build_click() {
+					// if (click_handled) {
+					// 	return;
+					// }
+					console.log("Button clicked", click_handled)
+					click_handled = true;
 					show_build.call(build);
-				});
+				}
+				build.element.removeEventListener('click', build_click);
+				// Add click event
+				build.element.addEventListener('click', build_click);
 			});
 
 			builds.forEach((build) => {
@@ -40,15 +57,15 @@ document.addEventListener('click', (event) => {
 			});
 		});
 	}
-});
+	click_handled = false;
+}
+
+document.addEventListener('click', main);
 
 
-
-function get_builds(callback) {
-	// spin until tests load
-	const body = document.querySelector('div.branch-action-body');
+function get_builds(body, callback) {
 	let elements = body.querySelectorAll('.merge-status-item');
-	body.querySelector('.merge-status-list').style['max-height'] = 'none';
+	body.style['max-height'] = 'none';
 
 	let builds = [];
 
@@ -71,25 +88,41 @@ function get_builds(callback) {
 	callback(builds);
 }
 
-function show_build(action_index) {
-	let old = clear_current_display();
-	if (this.element === old) {
+function show_build(action_index, is_updating) {
+	// debugger;
+	console.log("show build", is_updating)
+	console.log("show build", this.element.nextSibling === current_display)
+	console.log("show build", !is_updating && this.element.nextSibling === current_display)
+	if (!is_updating && this.element.nextSibling === current_display) {
+		clear_current_display();
 		return;
 	}
+	clear_current_display();
+	console.log("Show build")
+
+
 
 	current_spinner = build_spinner(this);
 	insert_after(this.element, current_spinner);
 
 	fetch_log(this.id, token, action_index, (raw_log, url, build_result, selected_step) => {
-		if (current_display) {
-			this.element.parentNode.removeChild(current_display);
-		}
-		if (current_spinner) {
-			this.element.parentNode.removeChild(current_spinner);
-		}
+		console.log("fetch log")
+		remove(current_spinner);
+		remove(current_display);
+
 		current_display = build_display(this, raw_log, url, build_result, selected_step);
 		insert_after(this.element, current_display);
 	})
+}
+
+function remove(element) {
+	if (element && element.parentNode) {
+		try {
+			element.parentNode.removeChild(element);			
+		} catch (e) {
+
+		}
+	}
 }
 
 function insert_after(element, toInsert) {
@@ -101,7 +134,7 @@ function insert_after(element, toInsert) {
 	}
 }
 
-function build_dropdown(items, onchange) {
+function build_dropdown(no_default, items, onchange) {
 	let select = document.createElement("select");
 
 	items.forEach((item) => {
@@ -111,7 +144,8 @@ function build_dropdown(items, onchange) {
 		if (item.selected) {
 			option.setAttribute('selected', 'selected');
 		}
-		option.appendChild(document.createTextNode(item.value));
+
+ 		option.appendChild(document.createTextNode(item.value));
 
 		select.appendChild(option);
 	});
@@ -154,9 +188,11 @@ function build_display(build, raw_log, url, build_result, selected_step) {
 	span.innerHTML = "Build step:"
 	div.appendChild(span);
 
-	div.appendChild(build_dropdown(actions, (event) => {
+
+	div.appendChild(build_dropdown(true, actions, (event) => {
 		let i = event.target.selectedIndex;
-		show_build.call(build, i);
+		console.log("show build call")
+		show_build.call(build, i, true);
 	}));
 
 	let pre = document.createElement("pre");
@@ -174,15 +210,10 @@ function build_btn(opts) {
 }
 
 function clear_current_display() {
-	if (!this || !this.element) {
-		return;
-	}
-	if (current_display && current_display.previousSibling == this.element) {
-		this.element.parentNode.removeChild(current_display);
-		old = current_display;
-		current_display = undefined;
-		return old;
-	}
+	let old = current_display;
+	remove(current_display);
+	current_display = undefined;
+	return old;
 }
 
 function retry_build(build) {
@@ -230,10 +261,6 @@ function get_build_id(link) {
 	return match[0];
 }
 
-function fetch_error(callback) {
-	callback("   HTTP Error", "", {}, "");
-}
-
 function fetch_log(build_id, token, action_index, callback) {
 	request(build_info_url(build_id, token), {
 		success: (result) => {
@@ -255,12 +282,12 @@ function fetch_log(build_id, token, action_index, callback) {
 					callback(log, url, result, name);
 				},
 				error: () => {
-					fetch_log(callback);
+					callback("   Could not get output log for build " + build_id, "", {}, "");
 				}
 			})
 		},
 		error: () => {
-			fetch_error(callback);
+			callback("   Could not get build info for build " + build_id, "", {}, "");
 		}
 	});
 }
