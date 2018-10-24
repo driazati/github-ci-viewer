@@ -19,16 +19,13 @@ let initialized = false;
 let click_handled = true;
 
 function main(event) {
-	console.log("Document click", click_handled)
 	if (!click_handled) {
-		console.log("Re-doing");
 		initialized = false;
 		click_handled = true;
 	}
 
 	let target = event.target.closest('div.branch-action-body div.merge-status-item');
 	let body = event.target.closest('.merge-status-list');
-	// let target = body.querySelector('div.merge-status-item')
 	if (!target) {
 		return;
 	}
@@ -38,10 +35,6 @@ function main(event) {
 		get_builds(body, (builds) => {
 			builds.forEach((build) => {
 				function build_click() {
-					// if (click_handled) {
-					// 	return;
-					// }
-					console.log("Button clicked", click_handled)
 					click_handled = true;
 					show_build.call(build);
 				}
@@ -62,6 +55,13 @@ function main(event) {
 
 document.addEventListener('click', main);
 
+function get_build_info(element) {
+	let link = element.querySelector('.status-actions').href;
+	return {
+		link: link,
+		id: get_build_id(link)
+	};
+}
 
 function get_builds(body, callback) {
 	let elements = body.querySelectorAll('.merge-status-item');
@@ -73,10 +73,10 @@ function get_builds(body, callback) {
 		let el = elements[i];
 		let link = el.querySelector('.status-actions').href;
 		let id = get_build_id(link);
-		if (!id) {
-			// Not a valid build
-			continue;
-		}
+		// if (!id) {
+		// 	// Not a valid build
+		// 	continue;
+		// }
 		builds.push({
 			element: el,
 			name: el.querySelector('strong').innerText,
@@ -89,28 +89,21 @@ function get_builds(body, callback) {
 }
 
 function show_build(action_index, is_updating) {
-	// debugger;
-	console.log("show build", is_updating)
-	console.log("show build", this.element.nextSibling === current_display)
-	console.log("show build", !is_updating && this.element.nextSibling === current_display)
 	if (!is_updating && this.element.nextSibling === current_display) {
 		clear_current_display();
 		return;
 	}
 	clear_current_display();
-	console.log("Show build")
-
-
+	remove(current_spinner);
 
 	current_spinner = build_spinner(this);
 	insert_after(this.element, current_spinner);
 
-	fetch_log(this.id, token, action_index, (raw_log, url, build_result, selected_step) => {
-		console.log("fetch log")
+	fetch_log(this.id, token, action_index, (raw_log, url, build_result, selected_step, is_err) => {
 		remove(current_spinner);
 		remove(current_display);
 
-		current_display = build_display(this, raw_log, url, build_result, selected_step);
+		current_display = build_display(this, raw_log, url, build_result, selected_step, is_err);
 		insert_after(this.element, current_display);
 	})
 }
@@ -155,57 +148,74 @@ function build_dropdown(no_default, items, onchange) {
 	return select;
 }
 
-function build_display(build, raw_log, url, build_result, selected_step) {
+function build_display(build, raw_log, url, build_result, selected_step, is_err) {
+	let container = document.createElement("div");
 	let div = document.createElement("div");
-	div.appendChild(build_btn({
-		text: "View full log",
-		click: () => {
-			pre.removeChild(pre.firstChild);
-			let text_node = document.createTextNode(process_log(raw_log, true));
-			pre.appendChild(text_node);
-		}
-	}));
+	if (!is_err) {
+		div.appendChild(build_btn({
+			text: "View full log",
+			click: () => {
+				pre.removeChild(pre.firstChild);
+				let text_node = document.createTextNode(process_log(raw_log, true));
+				pre.appendChild(text_node);
+			}
+		}));
 
-	div.appendChild(build_btn({
-		text: "Retry build",
-		click: () => {
-			retry_build(build);
-		}
-	}));
+		div.appendChild(build_btn({
+			text: "Retry build",
+			click: () => {
+				retry_build(build);
+			}
+		}));
+	}
 
 	let actions = [];
+	let select_index = -1;
 
 	if (build_result.steps) {
-		build_result.steps.forEach((step) => {
+		build_result.steps.forEach((step, index) => {
+			if (step.name === selected_step) {
+				select_index = index;
+			}
 			actions.push({
 				value: step.name,
 				selected: step.name === selected_step
 			});
 		});
 	}
-	
-	let span = document.createElement("span");
-	span.innerHTML = "Build step:"
-	div.appendChild(span);
 
+	if (actions.length > 0) {
+		let span = document.createElement("span");
+		span.innerHTML = "Build step (<span id='build_curr'>0</span> / <span id='build_total'>0</span>): ";
 
-	div.appendChild(build_dropdown(true, actions, (event) => {
-		let i = event.target.selectedIndex;
-		console.log("show build call")
-		show_build.call(build, i, true);
-	}));
+		let total_span = span.querySelector("#build_total");
+		let i_span = span.querySelector("#build_curr");
+
+		total_span.innerText = actions.length;
+		i_span.innerText = select_index + 1;
+
+		div.appendChild(span);
+
+		div.appendChild(build_dropdown(true, actions, (event) => {
+			let i = event.target.selectedIndex;
+			show_build.call(build, i, true);
+		}));
+	}
 
 	let pre = document.createElement("pre");
 	pre.appendChild(document.createTextNode(process_log(raw_log)));
-	div.appendChild(pre);
+	container.appendChild(div);
+	container.appendChild(pre);
+	div.style = 'border-bottom: 1px solid black; background-color: #f0f0f0';
 
-	return div;
+	return container;
 }
 
 function build_btn(opts) {
 	let btn = document.createElement("button");
 	btn.appendChild(document.createTextNode(opts.text));
 	btn.addEventListener('click', opts.click);
+	btn.style.margin = "5px";
 	return btn;
 }
 
@@ -264,30 +274,48 @@ function get_build_id(link) {
 function fetch_log(build_id, token, action_index, callback) {
 	request(build_info_url(build_id, token), {
 		success: (result) => {
+
 			result = JSON.parse(result);
+			console.log(result)
 			// let build_result = result.steps[0];
 			let i = action_index;
 			if (i === undefined) {
 				i = default_step(result);				
 			}
+			console.log(i)
+			console.log(result.steps)
+			console.log(i === false && result.steps.length == 0)
+			if (i === false && result.steps.length == 0) {
+				let output = "No build steps have run for build " + build_id;
+				if (result.lifecycle) {
+					output += " (status: " + result.lifecycle + ")";				
+				}
+				console.log(output)
+				callback("    " + output, "", {}, "", true);
+				return;
+			}
 			let url = result.steps[i].actions[0].output_url;
 			let name = result.steps[i].name;
 			// let url = build_result.actions[0].output_url;
 			if (!url) {
-				callback("   No log", url, result, name);
+				callback("   No output log url", url, result, name, true);
 				return;
 			}
 			request(url, {
 				success: (log) => {
-					callback(log, url, result, name);
+					callback(log, url, result, name, false);
 				},
 				error: () => {
-					callback("   Could not get output log for build " + build_id, "", {}, "");
+					callback("   Could not get output log for build " + build_id, "", {}, "", true);
 				}
 			})
 		},
-		error: () => {
-			callback("   Could not get build info for build " + build_id, "", {}, "");
+		error: (e) => {
+			if (build_id) {
+				callback("   Could not get build info for build " + build_id, "", {}, "", true);
+			} else {
+				callback("   Could not get build id", "", {}, "", true);
+			}
 		}
 	});
 }
@@ -330,11 +358,11 @@ function request(url, opts) {
 	req.onreadystatechange = function() {
 		if (req.readyState == 4) {
 			if (req.status >= 200 && req.status < 300) {
-				try {
+				// try {
 					success(req.responseText);
-				} catch (e) {
-					error("Can't parse JSON: " + req.responseText);					
-				}
+				// } catch (e) {
+					// error("Can't parse JSON: " + req.responseText);					
+				// }
 			} else {
 				error(req);
 			}
