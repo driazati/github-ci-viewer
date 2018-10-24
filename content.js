@@ -19,15 +19,16 @@ let initialized = false;
 let click_handled = true;
 
 function main(event) {
+	let target = event.target.closest('div.branch-action-body div.merge-status-item');
+	let body = event.target.closest('.merge-status-list');
+
+	if (!target) {
+		return;
+	}
+
 	if (!click_handled) {
 		initialized = false;
 		click_handled = true;
-	}
-
-	let target = event.target.closest('div.branch-action-body div.merge-status-item');
-	let body = event.target.closest('.merge-status-list');
-	if (!target) {
-		return;
 	}
 
 	if (!initialized) {
@@ -151,12 +152,27 @@ function build_dropdown(no_default, items, onchange) {
 function build_display(build, raw_log, url, build_result, selected_step, is_err) {
 	let container = document.createElement("div");
 	let div = document.createElement("div");
+	let processed_log = process_log(raw_log);
 	if (!is_err) {
+		let next_btn = build_btn({
+			text: "Prev 20 lines",
+			click: () => {
+				pre.removeChild(pre.firstChild);
+				let old_num_lines = parseInt(pre.getAttribute('num_lines'));
+				let new_num_lines = old_num_lines + 20;
+				pre.setAttribute('num_lines', new_num_lines);
+				let text_node = document.createTextNode(nFromEnd(processed_log, '\n', new_num_lines));
+				pre.appendChild(text_node);
+			}
+		});
+
 		div.appendChild(build_btn({
 			text: "View full log",
 			click: () => {
+				next_btn.parentNode.removeChild(next_btn);
 				pre.removeChild(pre.firstChild);
-				let text_node = document.createTextNode(process_log(raw_log, true));
+				pre.setAttribute('num_lines', NaN);
+				let text_node = document.createTextNode(processed_log);
 				pre.appendChild(text_node);
 			}
 		}));
@@ -167,6 +183,8 @@ function build_display(build, raw_log, url, build_result, selected_step, is_err)
 				retry_build(build);
 			}
 		}));
+
+		div.appendChild(next_btn);
 	}
 
 	let actions = [];
@@ -203,12 +221,31 @@ function build_display(build, raw_log, url, build_result, selected_step, is_err)
 	}
 
 	let pre = document.createElement("pre");
-	pre.appendChild(document.createTextNode(process_log(raw_log)));
+	pre.setAttribute('num_lines', log_lines);
+	pre.appendChild(document.createTextNode(nFromEnd(processed_log, '\n', log_lines)));
 	container.appendChild(div);
 	container.appendChild(pre);
 	div.style = 'border-bottom: 1px solid black; background-color: #f0f0f0';
 
+	// add_modal();
+
 	return container;
+}
+
+function add_modal() {
+	let div = document.createElement("div");
+
+	div.innerHTML = `<p>Settings</p>
+	<label>Number of tail lines</label>
+	<input>
+	<label>Previous lines increment</label>
+	<input>
+	<button id="modal_save">Save</button><button id="modal_save">Close</button>`;
+	div.classList.add("circleci-viewer-modal");
+
+
+
+	document.body.appendChild(div);
 }
 
 function build_btn(opts) {
@@ -260,6 +297,11 @@ function nthFromEnd(str, pat, n) {
     return i;
 }
 
+function nFromEnd(str, pat, n) {
+    let last_index = nthFromEnd(str, pat, n);
+    return str.substring(last_index);
+}
+
 function get_build_id(link) {
 	if (!link) {
 		return;
@@ -276,21 +318,16 @@ function fetch_log(build_id, token, action_index, callback) {
 		success: (result) => {
 
 			result = JSON.parse(result);
-			console.log(result)
 			// let build_result = result.steps[0];
 			let i = action_index;
 			if (i === undefined) {
 				i = default_step(result);				
 			}
-			console.log(i)
-			console.log(result.steps)
-			console.log(i === false && result.steps.length == 0)
 			if (i === false && result.steps.length == 0) {
 				let output = "No build steps have run for build " + build_id;
 				if (result.lifecycle) {
 					output += " (status: " + result.lifecycle + ")";				
 				}
-				console.log(output)
 				callback("    " + output, "", {}, "", true);
 				return;
 			}
@@ -332,10 +369,10 @@ function default_step(build_result) {
 
 function process_log(raw, is_full) {
 	let tail = raw.replace(/\/r/, '');
-	if (!is_full) {
-		tail = tail.substring(nthFromEnd(tail, '\\n', log_lines));
-		tail = tail.substring(tail.indexOf('\\n', tail.length) + 3);
-	}
+	// if (!is_full) {
+	// 	tail = tail.substring(nthFromEnd(tail, '\\n', log_lines));
+	// 	tail = tail.substring(tail.indexOf('\\n', tail.length) + 3);
+	// }
 	tail = tail.replace(/\\r\\n/g, '\n');
 	tail = tail.replace(/(\\r)|(\\n)/g, '\n');
 	return tail.replace(/\n\s*\n/g, '\n');
