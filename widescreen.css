@@ -1,3 +1,12 @@
+.log_viewer {
+  padding: 0px 5px 10px 5px;
+}
+
+.log-actions {
+  border-bottom: 1px solid black; background-color: #f0f0f0;
+  box-shadow: inset 0px 2px 12px -5px rgba(0,0,0,0.75);
+}
+
 .circleci-viewer-modal {
   position: fixed;
   top: 50%;
@@ -14,7 +23,6 @@
   padding-right: 30px !important;
 }
 
-/* Repo Next layout */
 
 .repository-content {
   width: 100% !important;
@@ -42,7 +50,6 @@
   width: 50%;
 }
 
-/* Repo Next Code page */
 
 .with-full-navigation {
   padding-right: 190px !important;
@@ -52,7 +59,6 @@
   margin-right: -190px !important;
 }
 
-/* Issues/PRs */
 
 .discussion-sidebar {
   width: 220px !important;
@@ -62,12 +68,10 @@
   width: calc(100% - 240px) !important;
 }
 
-/* Fix #18 - props: @auscompgeek */
 .file-header::after {
   clear: left !important;
 }
 
-/* New issues and Dashboard */
 
 #dashboard,
 .new-issue-form {
@@ -89,22 +93,18 @@ button.discussion-sidebar-toggle {
   max-width: none !important;
 }
 
-/* Dashboard */
-/* Note that this won't be needed if we actually flipped the DOM order around. */
 
 .news {
   float: none !important;
   margin-right: 360px !important;
 }
 
-/* Settings */
-/* This should be refactored to use our grid.scss styles anyway, thus negating these styles. */
 
 .settings-content,
 .repo-settings-content {
   float: none !important;
   width: auto !important;
-  overflow: auto !important; /* required to clear the floats that the float avoided */
+  overflow: auto !important;
 }
 .container > .settings-content,
 .repo-settings-content {
@@ -121,14 +121,11 @@ button.discussion-sidebar-toggle {
   padding-right: 30px !important;
 }
 
-/* Profile page */
 
-/* Profile avatar tooltip */
 .u-photo .avatar {
   width: 230px !important;
 }
 
-/* Commits: extended message under "..." */
 .commit-desc pre {
   max-width: none;
 }

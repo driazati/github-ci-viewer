@@ -105,6 +105,7 @@ function show_build(action_index, is_updating) {
 		remove(current_display);
 
 		current_display = build_display(this, raw_log, url, build_result, selected_step, is_err);
+		current_display.scrollIntoView(true);
 		insert_after(this.element, current_display);
 	})
 }
@@ -223,9 +224,10 @@ function build_display(build, raw_log, url, build_result, selected_step, is_err)
 	let pre = document.createElement("pre");
 	pre.setAttribute('num_lines', log_lines);
 	pre.appendChild(document.createTextNode(nFromEnd(processed_log, '\n', log_lines)));
+	pre.classList.add('log_viewer');
 	container.appendChild(div);
 	container.appendChild(pre);
-	div.style = 'border-bottom: 1px solid black; background-color: #f0f0f0';
+	div.classList.add('log-actions');
 
 	// add_modal();
 
@@ -323,7 +325,7 @@ function fetch_log(build_id, token, action_index, callback) {
 			if (i === undefined) {
 				i = default_step(result);				
 			}
-			if (i === false && result.steps.length == 0) {
+			if (i === false || result.steps.length == 0) {
 				let output = "No build steps have run for build " + build_id;
 				if (result.lifecycle) {
 					output += " (status: " + result.lifecycle + ")";				

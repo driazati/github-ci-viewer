@@ -1,11 +1,11 @@
 {
 	"manifest_version": 2,
 
-	"name": "CircleCI Logs on GitHub",
-	"short_name": "CircleLog",
-	"description": "View CircleCI Logs on GitHub",
+	"name": "CircleCI Log Viewer",
+	"short_name": "CircleCI Log Viewer",
+	"description": "View CircleCI Logs directly on GitHub",
 	"version": "1.0.0",
-	"author": "asdf",
+	"author": "pytorch",
 
 	"icons": { "16": "icons/icon16.png",
 		"48": "icons/icon48.png",
@@ -19,7 +19,7 @@
 
 	"content_scripts": [{
 		"matches": [
-			"*://github.com/*"
+			"*://github.com/*/pull*"
 		],
 		"js": ["content.js"],
 		"css": ["widescreen.css"],
