@@ -18,7 +18,14 @@ chrome.storage.local.get('info', (items) => {
 let initialized = false;
 let click_handled = true;
 
+function shouldDoNothing(event) {
+	return event.target.tagName.toLowerCase() === 'a';
+}
+
 function main(event) {
+	if (shouldDoNothing(event)) {
+		return;
+	}
 	let target = event.target.closest('div.branch-action-body div.merge-status-item');
 	let body = event.target.closest('.merge-status-list');
 
@@ -35,8 +42,11 @@ function main(event) {
 		initialized = true;
 		get_builds(body, (builds) => {
 			builds.forEach((build) => {
-				function build_click() {
+				function build_click(event) {
 					click_handled = true;
+					if (shouldDoNothing(event)) {
+						return;
+					}
 					show_build.call(build);
 				}
 				build.element.removeEventListener('click', build_click);
