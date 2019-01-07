@@ -1,5 +1,4 @@
 'use strict'
-
 let token = undefined;
 let repo = undefined;
 let username = undefined;
@@ -7,12 +6,14 @@ let log_lines = undefined;
 let vcs = 'github';
 let current_display = undefined;
 let current_spinner = undefined;
+let line_regex_default = undefined;
 
 chrome.storage.local.get('info', (items) => {
 	token = items.info.token;
 	username = items.info.username;
 	repo = items.info.repo;
 	log_lines = items.info.num_lines;
+	line_regex_default = items.info.regex_placeholder;
 });
 
 let initialized = false;
@@ -123,7 +124,7 @@ function show_build(action_index, is_updating) {
 function remove(element) {
 	if (element && element.parentNode) {
 		try {
-			element.parentNode.removeChild(element);			
+			element.parentNode.removeChild(element);
 		} catch (e) {
 
 		}
@@ -230,6 +231,41 @@ function build_display(build, raw_log, url, build_result, selected_step, is_err)
 			show_build.call(build, i, true);
 		}));
 	}
+
+	// Grep log
+	let grep_div = document.createElement("div");
+	grep_div.classList.add("grep_div");
+	let placeholder = line_regex_default;
+	if (line_regex_default === undefined) {
+		placeholder = '';
+	}
+	grep_div.innerHTML = "<span> Regex</span> <input id='log_grep' value='" + placeholder + "'>";
+	grep_div.appendChild(build_btn({
+			text: "Go",
+			click: () => {
+				const text = document.getElementById('log_grep').value;
+				let out = undefined;
+				if (text === '') {
+					out = nFromEnd(processed_log, '\n', log_lines);
+				} else {
+					const lines = processed_log.split("\n");
+					const regex = new RegExp(text);
+					let out_lines = [];
+					for (let i = 0; i < lines.length; i++) {
+						if (regex.test(lines[i])) {
+							out_lines.push(lines[i]);
+						}
+					}
+					out = out_lines.join("\n");
+				}
+
+				pre.removeChild(pre.firstChild);
+				pre.setAttribute('num_lines', NaN);
+				let text_node = document.createTextNode(out);
+				pre.appendChild(text_node);
+			}
+		}));
+    div.appendChild(grep_div);
 
 	let pre = document.createElement("pre");
 	pre.setAttribute('num_lines', log_lines);
@@ -394,24 +430,20 @@ function empty() { }
 
 function request(url, opts) {
 	const method = opts.method || 'GET';
-	const body = opts.body || {};
+	// const body = opts.body || {};
 	const success = opts.success || empty;
 	const error = opts.error || empty;
 
 	const req = new XMLHttpRequest();
-
+	console.log("Request", method, url);
 	req.open(method, url);
 	req.setRequestHeader('Accept', 'application/json');
-	req.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+	// req.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 	
 	req.onreadystatechange = function() {
 		if (req.readyState == 4) {
 			if (req.status >= 200 && req.status < 300) {
-				// try {
-					success(req.responseText);
-				// } catch (e) {
-					// error("Can't parse JSON: " + req.responseText);					
-				// }
+				success(req.responseText);
 			} else {
 				error(req);
 			}
@@ -422,9 +454,27 @@ function request(url, opts) {
 		error();
 	};
 
-	if (body) {
-		req.send(JSON.stringify(body));
-	} else {
-		req.send();
-	}
+	// if (body) {
+	// 	req.send(JSON.stringify(body));
+	// } else {
+	req.send("");
+	// }
+}
+
+
+unminize_comments();
+
+function unminize_comments() {
+	let comments = document.querySelectorAll('div.minimized-comment').forEach(unminimize);
+}
+
+function unminimize(element) {
+	let summary = element.querySelector('summary');
+	summary.click();
+	remove(summary);
+
+	let content = element.querySelector('details div');
+	content.style = 'padding: 0px !important';
+	remove(content.parentNode);
+	element.appendChild(content);
 }

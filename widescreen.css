@@ -17,6 +17,15 @@
   background-color: white;
 }
 
+.grep_div {
+  margin-left: 2px;
+  display: inline-block;
+}
+
+.grep_div input {
+  width: 8em;
+}
+
 .container {
   width: 100% !important;
   padding-left: 30px !important;

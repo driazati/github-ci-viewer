@@ -2,7 +2,7 @@ let properties = [
 	{
 		'name': 'token',
 		'title': 'Enter your <a href="https://circleci.com/docs/2.0/managing-api-tokens/#creating-a-personal-api-token">CircleCI auth token</a>',
-		'short': 'Token'
+		'short': 'CircleCI Token'
 	},
 	{
 		'name': 'username',
@@ -18,7 +18,18 @@ let properties = [
 		'name': 'num_lines',
 		'title': 'Number of tail lines to show',
 		'short': 'Tail lines'
-	}
+	},
+	{
+		'name': 'regex_placeholder',
+		'title': 'Default line regex',
+		'short': 'Default line regex'
+	},
+	{
+		'name': 'github_token',
+		'title': '<a href="https://github.com/settings/tokens">GitHub OAuth Token</a>',
+		'short': 'GitHub OAuth Token'
+	},
+
 ]
 
 function save() {
@@ -40,8 +51,12 @@ function save() {
 function show_info() {
 	chrome.storage.local.get('info', (container) => {
 		properties.forEach((prop) => {
-			prop.input.value = container.info[prop.name];
-			prop.display.innerText = container.info[prop.name];
+			let value = container.info[prop.name];
+			if (value === undefined) {
+				value = '';	
+			}
+			prop.input.value = value;
+			prop.display.innerText = value;
 		});
 	});
 }
