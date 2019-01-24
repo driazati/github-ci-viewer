@@ -44,7 +44,7 @@ function main(event) {
 
 	if (!initialized) {
 		initialized = true;
-		builds = get_builds(body);
+		let builds = get_builds(body);
 		builds.forEach((build) => {
 			function build_click(event) {
 				click_handled = true;
@@ -102,6 +102,8 @@ function add_rerun_failed_button() {
 			});
 		}
 	});
+	rerun_all_btn.style.margin = '0px';
+	rerun_all_btn.style['margin-left'] = '5px';
 
 	// Insert button to the left "hide_all_checks" text
 	hide_all_checks.parentNode.appendChild(rerun_all_btn, hide_all_checks);
@@ -493,7 +495,6 @@ function request(url, opts) {
 	const error = opts.error || empty;
 
 	const req = new XMLHttpRequest();
-	console.log("Request", method, url);
 	req.open(method, url);
 	req.setRequestHeader('Accept', 'application/json');
 	// req.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
