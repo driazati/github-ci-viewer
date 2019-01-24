@@ -4,7 +4,7 @@
 	"name": "CircleCI Log Viewer",
 	"short_name": "CircleCI Log Viewer",
 	"description": "View CircleCI Logs directly on GitHub",
-	"version": "1.0.10",
+	"version": "1.0.14",
 	"author": "pytorch",
 
 	"icons": { "16": "icons/icon16.png",
@@ -21,7 +21,7 @@
 		"matches": [
 			"*://github.com/*/pull*"
 		],
-		"js": ["content.js"],
+		"js": ["build_logs.js"],
 		"css": ["widescreen.css"],
 		"run_at": "document_end"
 	}, {
@@ -31,6 +31,12 @@
 		],
 		"js": ["show_build_status.js"],
 		"run_at": "document_end"
+	}, {
+		"matches": [
+			"*://github.com/*/pull*"
+		],
+		"js": ["no-github-spa.js"],
+		"run_at": "document_start"
 	}],
 	"permissions": [
 		"activeTab",
