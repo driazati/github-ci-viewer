@@ -88,7 +88,7 @@ function add_rerun_failed_button() {
 	rerun_all_btn = build_btn({
 		text: 'Rerun all failed CircleCI jobs',
 		click: (event) => {
-			let status_list_el = event.target.closest('div.branch-action-body').querySelector('.merge-status-list');
+			let status_list_el = event.target.closest('div.branch-action-item').querySelector('.merge-status-list');
 			let builds = get_builds(status_list_el);
 			builds = builds.filter((build) => build.status === 'failed' && build.link.includes('circleci.com'));
 			if (!confirm("Are you sure you want to re-run " + builds.length + " jobs?")) {
