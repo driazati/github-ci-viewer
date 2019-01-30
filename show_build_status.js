@@ -2,7 +2,7 @@ let github_token = undefined;
 chrome.storage.local.get('info', (items) => {
 	github_token = items.info.github_token;
 	progress_bar_main();
-	document.addEventListener('click', progress_bar_main);
+	document.addEventListener('pjax:end', progress_bar_main);
 });
 
 function parse_num(row) {
@@ -52,7 +52,8 @@ function progress_bar_main() {
 	}
 
 	if (!github_token) {
-		// no auth, cant fetch from API
+		// No auth, cant fetch from API
+		console.error("Couldn't fetch real progress bars (no GitHub OAuth token)");
 		return;
 	}
 

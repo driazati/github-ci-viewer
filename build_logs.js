@@ -23,17 +23,28 @@ function shouldDoNothing(event) {
 	return event.target.tagName.toLowerCase() === 'a';
 }
 
-function main(event) {
+function isCIStatusElement(merge_status_item) {
+	// Check for the "Details" link on the element, if it's not there then it's
+	// not a CI status 'div.merge-status-item'
+	let is_status = false;
+	merge_status_item.querySelectorAll('a').forEach((item) => {
+		if (item.innerText === "Details") {
+			is_status = true;
+		}
+	});
+
+	return is_status;
+}
+
+function click_main(event) {
 	if (shouldDoNothing(event)) {
 		return;
 	}
 	let target = event.target.closest('div.branch-action-body div.merge-status-item');
 	let body = event.target.closest('.merge-status-list');
 	
-	// Add re-run failed builds
-	add_rerun_failed_button();
 
-	if (!target) {
+	if (!target || !isCIStatusElement(target)) {
 		return;
 	}
 
@@ -41,6 +52,32 @@ function main(event) {
 		initialized = false;
 		click_handled = true;
 	}
+
+	let builds = main(target, body);
+
+	// Expand target build if this was a click
+	builds.forEach((build) => {
+		if (target && build.element === target) {
+			show_build.call(build);
+		}
+	});
+
+	click_handled = false;
+}
+
+function main(target, body) {
+	if (target === undefined) {
+		// 
+		// target = document.querySelectorAll('')
+		let merge_status_lists = document.querySelectorAll('.merge-status-list');
+		if (merge_status_lists.length === 0) {
+			console.error("No status lists found");
+		}
+		body = merge_status_lists[merge_status_lists.length - 1];
+	}
+
+	// Add re-run failed builds
+	add_rerun_failed_button(body);
 
 	if (!initialized) {
 		initialized = true;
@@ -57,34 +94,29 @@ function main(event) {
 			// Add click event
 			build.element.addEventListener('click', build_click);
 		});
-		builds.forEach((build) => {
-			if (build.element === target) {
-				show_build.call(build);
-			}
-		});
-
+		return builds;
 	}
-	click_handled = false;
+	return [];
 }
 
 
 let rerun_all_btn = undefined;
-function add_rerun_failed_button() {
+function add_rerun_failed_button(body) {
+	let parent = body.parentNode;
 	if (rerun_all_btn !== undefined) {
 		remove(rerun_all_btn);
 	}
-	let hide_all_checks = undefined;
-	let maybe_checks = document.querySelectorAll('button.btn-link.float-right.js-details-target');
-	for (let i = 0; i < maybe_checks.length; ++i) {
-		let span = maybe_checks[i].querySelector('span.statuses-toggle-opened');
-		if (span && span.innerText == "Hide all checks") {
-			hide_all_checks = maybe_checks[i];
-			break;
-		}
-	}
-	if (hide_all_checks === undefined) {
+	let hide_all_checks = parent.querySelector('button.btn-link.float-right.js-details-target');
+	if (!hide_all_checks) {
 		return;
 	}
+	// debugger;
+	let span = hide_all_checks.querySelector('span.statuses-toggle-opened');
+	if (!span || span.innerText !== "Hide all checks") {
+		// Wrong 'div.merge-status-list'
+		return;
+	}
+
 	rerun_all_btn = build_btn({
 		text: 'Rerun all failed CircleCI jobs',
 		click: (event) => {
@@ -105,12 +137,12 @@ function add_rerun_failed_button() {
 	rerun_all_btn.style.margin = '0px';
 	rerun_all_btn.style['margin-left'] = '5px';
 
+	rerun_all_btn.classList.add("circleci-viewer-rerun-all-btn");
 	// Insert button to the left "hide_all_checks" text
 	hide_all_checks.parentNode.appendChild(rerun_all_btn, hide_all_checks);
 }
 
-document.addEventListener('click', main);
-document.body.click();
+
 
 function get_build_info(element) {
 	let link = element.querySelector('.status-actions').href;
@@ -120,6 +152,20 @@ function get_build_info(element) {
 	};
 }
 
+function determine_status(merge_status_item) {
+	let svg = merge_status_item.querySelector('div.merge-status-icon').querySelector('svg');
+
+	if (svg.classList.contains('octicon-x')) {
+		return 'failed';
+	} else if (svg.classList.contains('octicon-primitive-dot')) {
+		return 'pending';
+	} else if (svg.classList.contains('octicon-check')) {
+		return 'success';
+	} else {
+		console.error("Unknown merge status on", merge_status_item);
+	}
+}
+
 function get_builds(body) {
 	let elements = body.querySelectorAll('.merge-status-item');
 	body.style['max-height'] = 'none';
@@ -127,34 +173,19 @@ function get_builds(body) {
 	let builds = [];
 
 	for (let i = 0; i < elements.length; i++) {
-		let el = elements[i];
-		let link = el.querySelector('.status-actions').href;
-		let id = get_build_id(link);
-		let status = undefined;
-		let svg = el.querySelector('div.merge-status-icon').querySelector('svg');
-		if (svg.classList.contains('octicon-x')) {
-			status = 'failed';
-		} else if (svg.classList.contains('octicon-primitive-dot')) {
-			status = 'pending';
-		} else if (svg.classList.contains('octicon-check')) {
-			status = 'success';
-		}
-		// if (!id) {
-		// 	// Not a valid build
-		// 	continue;
-		// }
+		let merge_status_item = elements[i];
+		let link = merge_status_item.querySelector('.status-actions').href;
+
 		builds.push({
-			element: el,
-			name: el.querySelector('strong').innerText,
+			element: merge_status_item,
+			name: merge_status_item.querySelector('strong').innerText,
 			link: link,
-			id: id,
-			status: status
+			id: get_build_id(link),
+			status: determine_status(merge_status_item)
 		});
 	}
 
 	return builds;
-
-	// callback(builds);
 }
 
 function show_build(action_index, is_updating) {
@@ -167,6 +198,10 @@ function show_build(action_index, is_updating) {
 
 	current_spinner = build_spinner(this);
 	insert_after(this.element, current_spinner);
+
+
+	// var config = { attributes:true, subtree: true };
+
 
 	fetch_log(this.id, token, action_index, (raw_log, url, build_result, selected_step, is_err) => {
 		remove(current_spinner);
@@ -202,19 +237,15 @@ function build_dropdown(no_default, items, onchange) {
 
 	items.forEach((item) => {
 		let option = document.createElement("option");
-
 		option.setAttribute('value', item.value);
 		if (item.selected) {
 			option.setAttribute('selected', 'selected');
 		}
-
  		option.appendChild(document.createTextNode(item.value));
-
 		select.appendChild(option);
 	});
 
 	select.addEventListener('change', onchange);
-
 	return select;
 }
 
@@ -287,42 +318,42 @@ function build_display(build, raw_log, url, build_result, selected_step, is_err)
 			let i = event.target.selectedIndex;
 			show_build.call(build, i, true);
 		}));
-	}
 
-	// Grep log
-	let grep_div = document.createElement("div");
-	grep_div.classList.add("grep_div");
-	let placeholder = line_regex_default;
-	if (line_regex_default === undefined) {
-		placeholder = '';
-	}
-	grep_div.innerHTML = "<span> Regex</span> <input id='log_grep' value='" + placeholder + "'>";
-	grep_div.appendChild(build_btn({
-			text: "Go",
-			click: () => {
-				const text = document.getElementById('log_grep').value;
-				let out = undefined;
-				if (text === '') {
-					out = nFromEnd(processed_log, '\n', log_lines);
-				} else {
-					const lines = processed_log.split("\n");
-					const regex = new RegExp(text);
-					let out_lines = [];
-					for (let i = 0; i < lines.length; i++) {
-						if (regex.test(lines[i])) {
-							out_lines.push(lines[i]);
+		// Grep log
+		let grep_div = document.createElement("div");
+		grep_div.classList.add("grep_div");
+		let placeholder = line_regex_default;
+		if (line_regex_default === undefined) {
+			placeholder = '';
+		}
+		grep_div.innerHTML = "<span> Regex</span> <input id='log_grep' value='" + placeholder + "'>";
+		grep_div.appendChild(build_btn({
+				text: "Go",
+				click: () => {
+					const text = document.getElementById('log_grep').value;
+					let out = undefined;
+					if (text === '') {
+						out = nFromEnd(processed_log, '\n', log_lines);
+					} else {
+						const lines = processed_log.split("\n");
+						const regex = new RegExp(text);
+						let out_lines = [];
+						for (let i = 0; i < lines.length; i++) {
+							if (regex.test(lines[i])) {
+								out_lines.push(lines[i]);
+							}
 						}
+						out = out_lines.join("\n");
 					}
-					out = out_lines.join("\n");
-				}
 
-				pre.removeChild(pre.firstChild);
-				pre.setAttribute('num_lines', NaN);
-				let text_node = document.createTextNode(out);
-				pre.appendChild(text_node);
-			}
-		}));
-    div.appendChild(grep_div);
+					pre.removeChild(pre.firstChild);
+					pre.setAttribute('num_lines', NaN);
+					let text_node = document.createTextNode(out);
+					pre.appendChild(text_node);
+				}
+			}));
+	    div.appendChild(grep_div);
+	}
 
 	let pre = document.createElement("pre");
 	pre.setAttribute('num_lines', log_lines);
@@ -332,26 +363,23 @@ function build_display(build, raw_log, url, build_result, selected_step, is_err)
 	container.appendChild(pre);
 	div.classList.add('log-actions');
 
-	// add_modal();
-
 	return container;
 }
 
-function add_modal() {
-	let div = document.createElement("div");
+// function add_modal() {
+// 	let div = document.createElement("div");
 
-	div.innerHTML = `<p>Settings</p>
-	<label>Number of tail lines</label>
-	<input>
-	<label>Previous lines increment</label>
-	<input>
-	<button id="modal_save">Save</button><button id="modal_save">Close</button>`;
-	div.classList.add("circleci-viewer-modal");
+// 	div.innerHTML = `<p>Settings</p>
+// 	<label>Number of tail lines</label>
+// 	<input>
+// 	<label>Previous lines increment</label>
+// 	<input>
+// 	<button id="modal_save">Save</button><button id="modal_save">Close</button>`;
+// 	div.classList.add("circleci-viewer-modal");
 
 
-
-	document.body.appendChild(div);
-}
+// 	document.body.appendChild(div);
+// }
 
 function build_btn(opts) {
 	let btn = document.createElement("button");
@@ -395,7 +423,8 @@ function build_retry_url(build_id) {
 function nthFromEnd(str, pat, n) {
     let i = -1;
     let search_backward_from = str.length;
-    while (n-- > 0) {
+    while (n > 0) {
+    	n -= 1;
         i = str.lastIndexOf(pat, search_backward_from);
         search_backward_from = i - pat.length;
         if (search_backward_from < 0) {
@@ -477,10 +506,6 @@ function default_step(build_result) {
 
 function process_log(raw, is_full) {
 	let tail = raw.replace(/\/r/, '');
-	// if (!is_full) {
-	// 	tail = tail.substring(nthFromEnd(tail, '\\n', log_lines));
-	// 	tail = tail.substring(tail.indexOf('\\n', tail.length) + 3);
-	// }
 	tail = tail.replace(/\\r\\n/g, '\n');
 	tail = tail.replace(/(\\r)|(\\n)/g, '\n');
 	return tail.replace(/\n\s*\n/g, '\n');
@@ -513,27 +538,47 @@ function request(url, opts) {
 		error();
 	};
 
-	// if (body) {
-	// 	req.send(JSON.stringify(body));
-	// } else {
 	req.send("");
-	// }
 }
 
 
-unminize_comments();
+// document.addEventListener("DOMContentLoaded", () => {
+// 	// For when GitHub refreshes CI status, re-do the stuff
+// 	let timeline_observer = new MutationObserver(function(mutations) {
+// 		mutations.forEach(function(mutation) {
+// 			if (mutation.addedNodes.length > 0 && mutation.addedNodes[0].id === 'partial-pull-merging') {
+// 				console.log(mutation);
+// 				main();
+// 			}
+// 		});
+// 	});
+// 	console.log(document.querySelector('.discussion-timeline-actions'))
+// 	timeline_observer.observe(document.querySelector('.discussion-timeline-actions'), {
+// 	    attributes: true,
+// 	    childList: true,
+// 	    characterData: true,
+// 	    subtree:true
+// 	});
+// });
 
-function unminize_comments() {
-	let comments = document.querySelectorAll('div.minimized-comment').forEach(unminimize);
-}
+document.addEventListener('pjax:end', main);
 
-function unminimize(element) {
-	let summary = element.querySelector('summary');
-	summary.click();
-	remove(summary);
+document.body.addEventListener('click', click_main);
+main();
 
-	let content = element.querySelector('details div');
-	content.style = 'padding: 0px !important';
-	remove(content.parentNode);
-	element.appendChild(content);
-}
+// unminize_comments();
+
+// function unminize_comments() {
+// 	let comments = document.querySelectorAll('div.minimized-comment').forEach(unminimize);
+// }
+
+// function unminimize(element) {
+// 	let summary = element.querySelector('summary');
+// 	summary.click();
+// 	remove(summary);
+
+// 	let content = element.querySelector('details div');
+// 	content.style = 'padding: 0px !important';
+// 	remove(content.parentNode);
+// 	element.appendChild(content);
+// }
