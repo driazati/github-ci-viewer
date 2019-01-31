@@ -53,14 +53,9 @@ function click_main(event) {
 		click_handled = true;
 	}
 
-	let builds = main(target, body);
+	main(target, body);
 
-	// Expand target build if this was a click
-	builds.forEach((build) => {
-		if (target && build.element === target) {
-			show_build.call(build);
-		}
-	});
+	event.target.click();
 
 	click_handled = false;
 }
@@ -71,9 +66,14 @@ function main(target, body) {
 		// target = document.querySelectorAll('')
 		let merge_status_lists = document.querySelectorAll('.merge-status-list');
 		if (merge_status_lists.length === 0) {
-			console.error("No status lists found");
+			return;
 		}
 		body = merge_status_lists[merge_status_lists.length - 1];
+	}
+
+	if (!body) {
+		console.error("No status lists found");
+		return;
 	}
 
 	// Add re-run failed builds

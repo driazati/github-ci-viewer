@@ -15,8 +15,6 @@
 		"page": "options.html",
 		"chrome_style": true
 	},
-
-
 	"content_scripts": [{
 		"matches": [
 			"*://github.com/*/pull*"
