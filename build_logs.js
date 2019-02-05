@@ -16,9 +16,6 @@ chrome.storage.local.get('info', (items) => {
 	line_regex_default = items.info.regex_placeholder;
 });
 
-let initialized = false;
-let click_handled = true;
-
 function shouldDoNothing(event) {
 	return event.target.tagName.toLowerCase() === 'a';
 }
@@ -26,6 +23,9 @@ function shouldDoNothing(event) {
 function isCIStatusElement(merge_status_item) {
 	// Check for the "Details" link on the element, if it's not there then it's
 	// not a CI status 'div.merge-status-item'
+	if (!merge_status_item) {
+		return;
+	}
 	let is_status = false;
 	merge_status_item.querySelectorAll('a').forEach((item) => {
 		if (item.innerText === "Details") {
@@ -36,104 +36,66 @@ function isCIStatusElement(merge_status_item) {
 	return is_status;
 }
 
-function click_main(event) {
-	if (shouldDoNothing(event)) {
-		return;
-	}
-	let target = event.target.closest('div.branch-action-body div.merge-status-item');
-	let body = event.target.closest('.merge-status-list');
-	
-
-	if (!target || !isCIStatusElement(target)) {
-		return;
-	}
-
-	if (!click_handled) {
-		initialized = false;
-		click_handled = true;
-	}
-
-	main(target, body);
-
-	event.target.click();
-
-	click_handled = false;
+function set_styles(merge_status_list) {
+	merge_status_list.style['max-height'] = 'none';
 }
 
-function main(target, body) {
-	if (target === undefined) {
-		// 
-		// target = document.querySelectorAll('')
-		let merge_status_lists = document.querySelectorAll('.merge-status-list');
-		if (merge_status_lists.length === 0) {
+function try_reattach_old_display(merge_status_list) {
+	// Determine if current_display was just deleted
+	if (!document.querySelector('#circleci_viewer_display') && current_display) {
+		// Edit current display with 'maybe stale' warning
+		current_display.querySelector('#circleci_viewer_freshness').classList.add("tooltip");
+		current_display.querySelector('#circleci_viewer_freshness').innerHTML = "<span class='tooltiptext'>The build status has been updated, but this log has not been</span>";
+		current_display.getAttribute('circleci_build_id');
+	
+		// Find build to put it on
+		let new_build = get_builds(merge_status_list).find((build) => {
+			return build.id === current_display.getAttribute('circleci_build_id');
+		});
+		if (!new_build) {
+			console.error("Could not find build for old display");
 			return;
 		}
-		body = merge_status_lists[merge_status_lists.length - 1];
+			
+		// Re-add element to the DOM
+		insert_after(new_build.element, current_display);
 	}
-
-	if (!body) {
-		console.error("No status lists found");
-		return;
-	}
-
-	// Add re-run failed builds
-	add_rerun_failed_button(body);
-
-	if (!initialized) {
-		initialized = true;
-		let builds = get_builds(body);
-		builds.forEach((build) => {
-			function build_click(event) {
-				click_handled = true;
-				if (shouldDoNothing(event)) {
-					return;
-				}
-				show_build.call(build);
-			}
-			build.element.removeEventListener('click', build_click);
-			// Add click event
-			build.element.addEventListener('click', build_click);
-		});
-		return builds;
-	}
-	return [];
 }
 
+function rerun_all_builds_click(event) {
+	let status_list_el = event.target.closest('div.branch-action-item').querySelector('.merge-status-list');
+	let builds = get_builds(status_list_el);
+	builds = builds.filter((build) => build.status === 'failed' && build.link.includes('circleci.com'));
+	if (!confirm("Are you sure you want to re-run " + builds.length + " jobs?")) {
+		return;
+	}
+	let failed_builds_info = [];
+	builds.forEach((build) => {
+		retry_build(build, () => {
+		});
+	});
+}
 
 let rerun_all_btn = undefined;
 function add_rerun_failed_button(body) {
 	let parent = body.parentNode;
 	if (rerun_all_btn !== undefined) {
+		// Get rid of old button
 		remove(rerun_all_btn);
 	}
+
 	let hide_all_checks = parent.querySelector('button.btn-link.float-right.js-details-target');
 	if (!hide_all_checks) {
-		return;
-	}
-	// debugger;
-	let span = hide_all_checks.querySelector('span.statuses-toggle-opened');
-	if (!span || span.innerText !== "Hide all checks") {
-		// Wrong 'div.merge-status-list'
+		console.error("No 'hide all checks' link in merge status list");
 		return;
 	}
 
 	rerun_all_btn = build_btn({
 		text: 'Rerun all failed CircleCI jobs',
-		click: (event) => {
-			let status_list_el = event.target.closest('div.branch-action-item').querySelector('.merge-status-list');
-			let builds = get_builds(status_list_el);
-			builds = builds.filter((build) => build.status === 'failed' && build.link.includes('circleci.com'));
-			if (!confirm("Are you sure you want to re-run " + builds.length + " jobs?")) {
-				return;
-			}
-			let failed_builds_info = [];
-			builds.forEach((build) => {
-				retry_build(build, () => {
-					console.log("retries", build.id);
-				});
-			});
-		}
+		click: rerun_all_builds_click
 	});
+
+	// Set button styles
 	rerun_all_btn.style.margin = '0px';
 	rerun_all_btn.style['margin-left'] = '5px';
 
@@ -142,51 +104,44 @@ function add_rerun_failed_button(body) {
 	hide_all_checks.parentNode.appendChild(rerun_all_btn, hide_all_checks);
 }
 
+function per_page_actions(merge_status_list) {
+	// These are run every time a merge_status_item is added to the page, so they
+	// must be guarded to not happen multiple times
+	set_styles(merge_status_list);
 
+	// Add re-run failed builds
+	add_rerun_failed_button(merge_status_list);
 
-function get_build_info(element) {
-	let link = element.querySelector('.status-actions').href;
-	return {
-		link: link,
-		id: get_build_id(link)
-	};
+	// If there has been a refresh, find the old build of the current display and
+	// put it back
+	try_reattach_old_display(merge_status_list);
 }
 
-function determine_status(merge_status_item) {
-	let svg = merge_status_item.querySelector('div.merge-status-icon').querySelector('svg');
 
-	if (svg.classList.contains('octicon-x')) {
-		return 'failed';
-	} else if (svg.classList.contains('octicon-primitive-dot')) {
-		return 'pending';
-	} else if (svg.classList.contains('octicon-check')) {
-		return 'success';
-	} else {
-		console.error("Unknown merge status on", merge_status_item);
-	}
-}
-
-function get_builds(body) {
-	let elements = body.querySelectorAll('.merge-status-item');
-	body.style['max-height'] = 'none';
-
-	let builds = [];
-
-	for (let i = 0; i < elements.length; i++) {
-		let merge_status_item = elements[i];
-		let link = merge_status_item.querySelector('.status-actions').href;
-
-		builds.push({
-			element: merge_status_item,
-			name: merge_status_item.querySelector('strong').innerText,
-			link: link,
-			id: get_build_id(link),
-			status: determine_status(merge_status_item)
-		});
+function merge_status_item_added(merge_status_item) {
+	if (!isCIStatusElement(merge_status_item)) {
+		// Not a CI build, don't do anything with it
+		return;
 	}
 
-	return builds;
+	// Set page styles, add rerun all build button
+	per_page_actions(merge_status_item.closest('.merge-status-list'));
+
+
+	// Get build info and set up click event listener on item
+	let build = get_build(merge_status_item);
+
+	merge_status_item.addEventListener('click', (event) => {
+		// If user clicks 'details', don't do anything
+		if (shouldDoNothing(event)) {
+			return;
+		}
+
+		// Build log display and show
+		show_build.call(build);
+	});
 }
+
 
 function show_build(action_index, is_updating) {
 	if (!is_updating && this.element.nextSibling === current_display) {
@@ -200,57 +155,20 @@ function show_build(action_index, is_updating) {
 	insert_after(this.element, current_spinner);
 
 
-	// var config = { attributes:true, subtree: true };
-
-
-	fetch_log(this.id, token, action_index, (raw_log, url, build_result, selected_step, is_err) => {
+	fetch_log(this, token, action_index, (raw_log, url, build_result, selected_step, is_err) => {
 		remove(current_spinner);
 		remove(current_display);
 
 		current_display = build_display(this, raw_log, url, build_result, selected_step, is_err);
+		current_display.setAttribute('circleci_build_id', this.id);
 		current_display.scrollIntoView(true);
 		insert_after(this.element, current_display);
 	});
 }
 
-function remove(element) {
-	if (element && element.parentNode) {
-		try {
-			element.parentNode.removeChild(element);
-		} catch (e) {
-
-		}
-	}
-}
-
-function insert_after(element, toInsert) {
-	let next = element.nextSibling;
-	if (next) {
-		element.parentNode.insertBefore(toInsert, next);
-	} else {
-		element.parentNode.insert(toInsert);
-	}
-}
-
-function build_dropdown(no_default, items, onchange) {
-	let select = document.createElement("select");
-
-	items.forEach((item) => {
-		let option = document.createElement("option");
-		option.setAttribute('value', item.value);
-		if (item.selected) {
-			option.setAttribute('selected', 'selected');
-		}
- 		option.appendChild(document.createTextNode(item.value));
-		select.appendChild(option);
-	});
-
-	select.addEventListener('change', onchange);
-	return select;
-}
-
 function build_display(build, raw_log, url, build_result, selected_step, is_err) {
 	let container = document.createElement("div");
+	container.id = 'circleci_viewer_display';
 	let div = document.createElement("div");
 	let processed_log = process_log(raw_log);
 	if (!is_err) {
@@ -322,10 +240,7 @@ function build_display(build, raw_log, url, build_result, selected_step, is_err)
 		// Grep log
 		let grep_div = document.createElement("div");
 		grep_div.classList.add("grep_div");
-		let placeholder = line_regex_default;
-		if (line_regex_default === undefined) {
-			placeholder = '';
-		}
+		let placeholder = line_regex_default || '';
 		grep_div.innerHTML = "<span> Regex</span> <input id='log_grep' value='" + placeholder + "'>";
 		grep_div.appendChild(build_btn({
 				text: "Go",
@@ -355,13 +270,24 @@ function build_display(build, raw_log, url, build_result, selected_step, is_err)
 	    div.appendChild(grep_div);
 	}
 
+	// Used for denoting when current_display has become stale
+	let freshness = document.createElement("span");
+	freshness.id = 'circleci_viewer_freshness';
+	freshness.style.color = '#7d7d00';
+	freshness.style['font-weight'] = 'bold';
+	div.appendChild(freshness);
+
+	// Add log actions
+	div.classList.add('log-actions');
+	container.appendChild(div);
+
 	let pre = document.createElement("pre");
 	pre.setAttribute('num_lines', log_lines);
 	pre.appendChild(document.createTextNode(nFromEnd(processed_log, '\n', log_lines)));
 	pre.classList.add('log_viewer');
-	container.appendChild(div);
+
+	// Add log content
 	container.appendChild(pre);
-	div.classList.add('log-actions');
 
 	return container;
 }
@@ -380,14 +306,6 @@ function build_display(build, raw_log, url, build_result, selected_step, is_err)
 
 // 	document.body.appendChild(div);
 // }
-
-function build_btn(opts) {
-	let btn = document.createElement("button");
-	btn.appendChild(document.createTextNode(opts.text));
-	btn.addEventListener('click', opts.click);
-	btn.style.margin = "5px";
-	return btn;
-}
 
 function clear_current_display() {
 	let old = current_display;
@@ -439,19 +357,8 @@ function nFromEnd(str, pat, n) {
     return str.substring(last_index);
 }
 
-function get_build_id(link) {
-	if (!link) {
-		return;
-	}
-	let match = link.match(/\d+(?=\?)/g);
-	if (!match || match.length != 1) {
-		return;
-	}
-	return match[0];
-}
-
-function fetch_log(build_id, token, action_index, callback) {
-	request(build_info_url(build_id, token), {
+function fetch_log(build, token, action_index, callback) {
+	request(build_info_url(build.id, token), {
 		success: (result) => {
 
 			result = JSON.parse(result);
@@ -461,7 +368,7 @@ function fetch_log(build_id, token, action_index, callback) {
 				i = default_step(result);				
 			}
 			if (i === false || result.steps.length == 0) {
-				let output = "No build steps have run for build " + build_id;
+				let output = "No build steps have run for build " + build.id;
 				if (result.lifecycle) {
 					output += " (status: " + result.lifecycle + ")";				
 				}
@@ -480,18 +387,33 @@ function fetch_log(build_id, token, action_index, callback) {
 					callback(log, url, result, name, false);
 				},
 				error: () => {
-					callback("   Could not get output log for build " + build_id, "", {}, "", true);
+					callback("   Could not get output log for build " + build.id, "", {}, "", true);
 				}
 			})
 		},
 		error: (e) => {
-			if (build_id) {
-				callback("   Could not get build info for build " + build_id, "", {}, "", true);
-			} else {
-				callback("   Could not get build id", "", {}, "", true);
-			}
+			callback("   " + get_error_text(build), "", {}, "", true);
+			// if (build_id) {
+			// 	callback("   Could not get build info for build " + build_id, "", {}, "", true);
+			// } else {
+			// 	callback("   Could not get build id", "", {}, "", true);
+			// }
 		}
 	});
+}
+
+function get_error_text(build) {
+	if (build.name.includes('travis-ci')) {
+		return "Travis is not supported";
+	}
+	if (build.link.includes("jenkins/")) {
+		return "Jenkins is not supported";
+	}
+	if (build.id) {
+		return "Could not get build info for build " + build.id;
+	} else {
+		return "Could not get build id";
+	}
 }
 
 function default_step(build_result) {
@@ -511,74 +433,34 @@ function process_log(raw, is_full) {
 	return tail.replace(/\n\s*\n/g, '\n');
 }
 
-function empty() { }
-
-function request(url, opts) {
-	const method = opts.method || 'GET';
-	// const body = opts.body || {};
-	const success = opts.success || empty;
-	const error = opts.error || empty;
-
-	const req = new XMLHttpRequest();
-	req.open(method, url);
-	req.setRequestHeader('Accept', 'application/json');
-	// req.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-	
-	req.onreadystatechange = function() {
-		if (req.readyState == 4) {
-			if (req.status >= 200 && req.status < 300) {
-				success(req.responseText);
+// GitHub status page is updated whenever GitHub feels like it and also on any
+// ajax page loads (a 'pjax:end' DOM event), but this observer catches all of
+// those
+let observer = new MutationObserver(function(mutations) {
+	mutations.forEach(function(mutation) {
+		if (mutation.addedNodes.length === 1) {
+			let node = mutation.addedNodes[0];
+			if (node.tagName && node.tagName == 'DIV') {
+				console.log(mutation);
 			} else {
-				error(req);
+				return;
 			}
+
+			// Check if the added node itself is a 'div.merge-status-item'
+			if (node.classList && node.classList.contains('merge-status-item')) {
+				console.info("ADDING MERGE STATUS ITEM");
+				merge_status_item_added(node);
+				return;
+			}
+
+			// Check if the added node contains any 'div.merge-status-item's
+			let items = node
+				.querySelectorAll('div.merge-status-item')
+				.forEach(merge_status_item_added)
 		}
-	}
-	
-	req.onerror = function() {
-		error();
-	};
-
-	req.send("");
-}
-
-
-// document.addEventListener("DOMContentLoaded", () => {
-// 	// For when GitHub refreshes CI status, re-do the stuff
-// 	let timeline_observer = new MutationObserver(function(mutations) {
-// 		mutations.forEach(function(mutation) {
-// 			if (mutation.addedNodes.length > 0 && mutation.addedNodes[0].id === 'partial-pull-merging') {
-// 				console.log(mutation);
-// 				main();
-// 			}
-// 		});
-// 	});
-// 	console.log(document.querySelector('.discussion-timeline-actions'))
-// 	timeline_observer.observe(document.querySelector('.discussion-timeline-actions'), {
-// 	    attributes: true,
-// 	    childList: true,
-// 	    characterData: true,
-// 	    subtree:true
-// 	});
-// });
-
-document.addEventListener('pjax:end', main);
-
-document.body.addEventListener('click', click_main);
-main();
-
-// unminize_comments();
-
-// function unminize_comments() {
-// 	let comments = document.querySelectorAll('div.minimized-comment').forEach(unminimize);
-// }
-
-// function unminimize(element) {
-// 	let summary = element.querySelector('summary');
-// 	summary.click();
-// 	remove(summary);
-
-// 	let content = element.querySelector('details div');
-// 	content.style = 'padding: 0px !important';
-// 	remove(content.parentNode);
-// 	element.appendChild(content);
-// }
+	});
+});
+observer.observe(document, {
+    childList: true,
+    subtree: true,
+});

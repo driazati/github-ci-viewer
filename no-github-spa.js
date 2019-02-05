@@ -1,18 +1,11 @@
-// let target_regexes = [
-// 	/https:\/\/github\.com\/pytorch\/pytorch\/pull\/\d+$/,
-// 	/https:\/\/github\.com\/pytorch\/pytorch\/pull\/\d+\/commits$/,
-// 	/https:\/\/github\.com\/pytorch\/pytorch\/pull\/\d+\/files$/
-// ];
+chrome.storage.local.get('info', (items) => {
+	if (items.info.disable_pjax && items.info.disable_pjax === '1') {
+		document.body.addEventListener('click', (event) => {
+			let a = event.target.closest('a');
+			if (a) {
+				a.setAttribute('data-skip-pjax', true);
+			}
+		});
+	}
+});
 
-// document.addEventListener('click', (e) => {
-// 	if (e.target.localName === 'a' && e.target.href) {
-// 		let matches = target_regexes.some((regex) => e.target.href.match(regex));
-
-// 		if (matches) {
-// 			e.preventDefault();
-// 			e.stopImmediatePropagation();
-// 			e.stopPropagation();
-// 			window.location = e.target.href;
-// 		}
-// 	}
-// });

@@ -29,6 +29,11 @@ let properties = [
 		'title': '<a href="https://github.com/settings/tokens">GitHub OAuth Token</a>',
 		'short': 'GitHub OAuth Token'
 	},
+		{
+		'name': 'disable_pjax',
+		'title': 'Disable <a href="https://github.blog/2011-04-09-issues-2-0-the-next-generation/#pjax-next-generation-partial-page-loads">pjax</a> (enter "1" to disable)',
+		'short': 'Disable pjax'
+	},
 
 ]
 

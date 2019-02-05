@@ -157,8 +157,6 @@ function remove(element) {
 	}
 }
 
-function empty() { }
-
 function status_request(url, opts) {
 	const method = opts.method || 'POST';
 	const body = opts.body || {};

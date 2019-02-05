@@ -19,20 +19,27 @@
 		"matches": [
 			"*://github.com/*/pull*"
 		],
-		"js": ["build_logs.js"],
+		"js": ["lib.js", "build_info.js", "build_logs.js", "unminimize_comments.js"],
 		"css": ["widescreen.css"],
-		"run_at": "document_end"
+		"run_at": "document_start"
 	}, {
 		"matches": [
 			"*://github.com/*/pulls*",
 			"*://github.com/pulls*"
 		],
-		"js": ["show_build_status.js"],
+		"js": ["lib.js", "show_build_status.js"],
+		"run_at": "document_end"
+	}, {
+		"matches": [
+			"*://github.com/*"
+		],
+		"js": ["no-github-spa.js"],
 		"run_at": "document_end"
 	}],
 	"permissions": [
 		"activeTab",
 		"storage",
+		"https://github.com/*",
 		"https://circleci.com/*",
 		"https://*.amazonaws.com/"
 	]
