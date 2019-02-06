@@ -17,6 +17,7 @@ chrome.storage.local.get('info', (items) => {
 });
 
 function shouldDoNothing(event) {
+	// If the user clicked on the 'Details' link, don't do anything
 	return event.target.tagName.toLowerCase() === 'a';
 }
 
@@ -37,6 +38,7 @@ function isCIStatusElement(merge_status_item) {
 }
 
 function set_styles(merge_status_list) {
+	// Show all the CI elements on the page
 	merge_status_list.style['max-height'] = 'none';
 }
 
@@ -63,16 +65,20 @@ function try_reattach_old_display(merge_status_list) {
 }
 
 function rerun_all_builds_click(event) {
+	// Find failed builds
 	let status_list_el = event.target.closest('div.branch-action-item').querySelector('.merge-status-list');
 	let builds = get_builds(status_list_el);
 	builds = builds.filter((build) => build.status === 'failed' && build.link.includes('circleci.com'));
+
+	// Make sure before launching requests
 	if (!confirm("Are you sure you want to re-run " + builds.length + " jobs?")) {
 		return;
 	}
+
+	// Go to job retry url for each failed build
 	let failed_builds_info = [];
 	builds.forEach((build) => {
-		retry_build(build, () => {
-		});
+		retry_build(build, empty);
 	});
 }
 
@@ -84,6 +90,7 @@ function add_rerun_failed_button(body) {
 		remove(rerun_all_btn);
 	}
 
+	// Look for 'Hide all checks' link to find where to put the button
 	let hide_all_checks = parent.querySelector('button.btn-link.float-right.js-details-target');
 	if (!hide_all_checks) {
 		console.error("No 'hide all checks' link in merge status list");
@@ -118,6 +125,22 @@ function per_page_actions(merge_status_list) {
 }
 
 
+function find_and_add_merge_items(event) {
+	// Find 'div.merge-status-items' without any context
+	let lists = document.querySelectorAll('div.merge-status-list');
+	let ci_list = find(lists, (list) => {
+		let items = list.querySelectorAll('div.merge-status-item');
+
+		return all_of(items, (item) => isCIStatusElement);
+	});
+	if (!ci_list) {
+		return;
+	}
+
+	ci_list.querySelectorAll('div.merge-status-item').forEach(merge_status_item_added);
+}
+
+
 function merge_status_item_added(merge_status_item) {
 	if (!isCIStatusElement(merge_status_item)) {
 		// Not a CI build, don't do anything with it
@@ -127,6 +150,10 @@ function merge_status_item_added(merge_status_item) {
 	// Set page styles, add rerun all build button
 	per_page_actions(merge_status_item.closest('.merge-status-list'));
 
+	if (merge_status_item.getAttribute('circle_ci_viewer_has_seen')) {
+		// This one has already had a click event attached, ignore it
+		return;
+	}
 
 	// Get build info and set up click event listener on item
 	let build = get_build(merge_status_item);
@@ -137,24 +164,34 @@ function merge_status_item_added(merge_status_item) {
 			return;
 		}
 
+		let old_display = document.querySelector('#circleci_viewer_display');
+		if (old_display) {
+			if (old_display.previousSibling === merge_status_item) {
+				// Collapse old display
+				clear_current_display();
+				return;				
+			}
+		}
+
 		// Build log display and show
 		show_build.call(build);
 	});
+
+	merge_status_item.setAttribute('circle_ci_viewer_has_seen', true);
 }
 
 
 function show_build(action_index, is_updating) {
-	if (!is_updating && this.element.nextSibling === current_display) {
-		clear_current_display();
-		return;
-	}
 	clear_current_display();
+	// Remove 'Loading build ...' text if it's on the page
 	remove(current_spinner);
 
+	// Put up new loading text
 	current_spinner = build_spinner(this);
 	insert_after(this.element, current_spinner);
 
 
+	// Get the display, put it on the page
 	fetch_log(this, token, action_index, (raw_log, url, build_result, selected_step, is_err) => {
 		remove(current_spinner);
 		remove(current_display);
@@ -162,13 +199,13 @@ function show_build(action_index, is_updating) {
 		current_display = build_display(this, raw_log, url, build_result, selected_step, is_err);
 		current_display.setAttribute('circleci_build_id', this.id);
 		current_display.scrollIntoView(true);
+		current_display.id = 'circleci_viewer_display';
 		insert_after(this.element, current_display);
 	});
 }
 
 function build_display(build, raw_log, url, build_result, selected_step, is_err) {
 	let container = document.createElement("div");
-	container.id = 'circleci_viewer_display';
 	let div = document.createElement("div");
 	let processed_log = process_log(raw_log);
 	if (!is_err) {
@@ -358,15 +395,19 @@ function nFromEnd(str, pat, n) {
 }
 
 function fetch_log(build, token, action_index, callback) {
+	// First, get build summary info
 	request(build_info_url(build.id, token), {
 		success: (result) => {
-
 			result = JSON.parse(result);
-			// let build_result = result.steps[0];
+
+			// If a particular build step is selected, use that. If not, use the
+			// last one with an output log url
 			let i = action_index;
 			if (i === undefined) {
 				i = default_step(result);				
 			}
+
+			// If no steps have output logs or no steps have run, don't do anything
 			if (i === false || result.steps.length == 0) {
 				let output = "No build steps have run for build " + build.id;
 				if (result.lifecycle) {
@@ -375,13 +416,11 @@ function fetch_log(build, token, action_index, callback) {
 				callback("    " + output, "", {}, "", true);
 				return;
 			}
+
 			let url = result.steps[i].actions[0].output_url;
 			let name = result.steps[i].name;
-			// let url = build_result.actions[0].output_url;
-			if (!url) {
-				callback("   No output log url", url, result, name, true);
-				return;
-			}
+
+			// Get the output log of the build step from AWS
 			request(url, {
 				success: (log) => {
 					callback(log, url, result, name, false);
@@ -393,11 +432,6 @@ function fetch_log(build, token, action_index, callback) {
 		},
 		error: (e) => {
 			callback("   " + get_error_text(build), "", {}, "", true);
-			// if (build_id) {
-			// 	callback("   Could not get build info for build " + build_id, "", {}, "", true);
-			// } else {
-			// 	callback("   Could not get build id", "", {}, "", true);
-			// }
 		}
 	});
 }
@@ -441,14 +475,13 @@ let observer = new MutationObserver(function(mutations) {
 		if (mutation.addedNodes.length === 1) {
 			let node = mutation.addedNodes[0];
 			if (node.tagName && node.tagName == 'DIV') {
-				console.log(mutation);
+				// console.log(mutation);
 			} else {
 				return;
 			}
 
 			// Check if the added node itself is a 'div.merge-status-item'
 			if (node.classList && node.classList.contains('merge-status-item')) {
-				console.info("ADDING MERGE STATUS ITEM");
 				merge_status_item_added(node);
 				return;
 			}
@@ -464,3 +497,7 @@ observer.observe(document, {
     childList: true,
     subtree: true,
 });
+
+// Just in case, try to add the click events on any old document click or pjax load
+document.addEventListener('pjax:end', find_and_add_merge_items);
+document.addEventListener('click', find_and_add_merge_items);

@@ -46,12 +46,20 @@ function build_btn(opts) {
 
 function find(list, filter) {
 	for (let i = 0; i < list.length; i++) {
-		console.log("finding on ", i);
 		if (filter(list[i])) {
 			return list[i];
 		}
 	}
 	return undefined;
+}
+
+function all_of(list, test) {
+	for (let i = 0; i < list.length; i++) {
+		if (!test(list[i])) {
+			return false;
+		}
+	}
+	return true;
 }
 
 function iterable_map(iterable, map) {
