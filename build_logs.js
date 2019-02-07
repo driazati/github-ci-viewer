@@ -1,5 +1,5 @@
 'use strict'
-let token = undefined;
+let CIRCLECI_TOKEN = undefined;
 let repo = undefined;
 let username = undefined;
 let log_lines = undefined;
@@ -7,13 +7,19 @@ let vcs = 'github';
 let current_display = undefined;
 let current_spinner = undefined;
 let line_regex_default = undefined;
+let high_signal_builds = undefined;
 
 chrome.storage.local.get('info', (items) => {
-	token = items.info.token;
+	CIRCLECI_TOKEN = items.info.token;
 	username = items.info.username;
 	repo = items.info.repo;
 	log_lines = items.info.num_lines;
 	line_regex_default = items.info.regex_placeholder;
+	high_signal_builds = items.info.high_signal_builds;
+
+	if (high_signal_builds) {
+		high_signal_builds = high_signal_builds.split("\n").map((item) => item.trim());
+	}
 });
 
 function shouldDoNothing(event) {
@@ -158,6 +164,17 @@ function merge_status_item_added(merge_status_item) {
 	// Get build info and set up click event listener on item
 	let build = get_build(merge_status_item);
 
+	if (build.status === 'failed' && high_signal_builds.includes(build.name)) {
+	// if (build.status === 'failed' && high_signal_builds.includes(build.name.trim())) {
+		// Set red background for important build failure
+		merge_status_item.style['background-color'] = '#ff000030';
+	}
+
+	if (isSupported(build) && build.status === 'failed') {
+		// Show what build step failed
+		show_failed_build_step(merge_status_item, build);
+	}
+
 	merge_status_item.addEventListener('click', (event) => {
 		// If user clicks 'details', don't do anything
 		if (shouldDoNothing(event)) {
@@ -174,14 +191,59 @@ function merge_status_item_added(merge_status_item) {
 		}
 
 		// Build log display and show
-		show_build.call(build);
+		show_build.call(build, undefined, undefined, merge_status_item);
+
 	});
 
 	merge_status_item.setAttribute('circle_ci_viewer_has_seen', true);
 }
 
+function show_failed_build_step(merge_status_item, build) {
+	// Adds a 'circleci_result' attribute to the 'div.merge-status-item', which
+	// lets fetch_log skip the redundant request to CircleCI
+	let test_status = merge_status_item.querySelector('div.text-gray');
 
-function show_build(action_index, is_updating) {
+	// // 2nd child node is the text "— Your tests failed on CircleCI"
+	request(build_info_url(build.id), {
+		success: (result) => {
+			result = JSON.parse(result);
+
+			let last_step = default_step(result);
+			let log_url = result.steps[last_step].actions[0].output_url;
+
+			let text = "— Your tests failed on CircleCI"
+				+ " (" + result.steps[last_step].name + ")";
+
+			test_status.removeChild(test_status.childNodes[2]);
+			test_status.appendChild(document.createTextNode(text));
+
+			let small_result = {
+				steps: result.steps,
+				lifecycle: result.lifecycle
+			};
+
+			merge_status_item.setAttribute('circleci_result', JSON.stringify(small_result));
+		},
+		error: (e) => {
+			console.error("Could not get build info for:");
+			console.error(merge_status_item);
+		}
+	});
+}
+
+function show_log(raw_log, steps, selected_step, element, is_err) {
+	remove(current_spinner);
+	remove(current_display);
+
+	current_display = build_display(this, raw_log, steps, selected_step, is_err);
+	current_display.setAttribute('circleci_build_id', this.id);
+	current_display.scrollIntoView(true);
+	current_display.id = 'circleci_viewer_display';
+	insert_after(this.element, current_display);
+}
+
+
+function show_build(action_index, is_updating, merge_status_item) {
 	clear_current_display();
 	// Remove 'Loading build ...' text if it's on the page
 	remove(current_spinner);
@@ -190,21 +252,77 @@ function show_build(action_index, is_updating) {
 	current_spinner = build_spinner(this);
 	insert_after(this.element, current_spinner);
 
+	let show_this_log = show_log.bind(this);
 
-	// Get the display, put it on the page
-	fetch_log(this, token, action_index, (raw_log, url, build_result, selected_step, is_err) => {
-		remove(current_spinner);
-		remove(current_display);
+	if (merge_status_item && merge_status_item.hasAttribute('circleci_result')) {
+		let result = JSON.parse(merge_status_item.getAttribute('circleci_result'));
+		// If a particular build step is selected, use that. If not, use the
+		// last one with an output log url
+		let selected_step = action_index;
+		if (selected_step === undefined) {
+			selected_step = default_step(result);				
+		}
 
-		current_display = build_display(this, raw_log, url, build_result, selected_step, is_err);
-		current_display.setAttribute('circleci_build_id', this.id);
-		current_display.scrollIntoView(true);
-		current_display.id = 'circleci_viewer_display';
-		insert_after(this.element, current_display);
+		// If no steps have output logs or no steps have run, don't do anything
+		if (selected_step === false || result.steps.length == 0) {
+			let output = "No build steps have run for build " + build.id;
+			if (result.lifecycle) {
+				output += " (status: " + result.lifecycle + ")";				
+			}
+			show_this_log("    " + output, [], -1, true);
+			return;
+		}
+
+		let log_url = result.steps[selected_step].actions[0].output_url;
+		request(log_url, {
+			success: (log) => {
+				show_this_log(log, result.steps, selected_step, false);
+			},
+			error: () => {
+				show_this_log("   Could not get output log for this step", result.steps, selected_step, true);
+			}
+		});
+		return;
+	}
+
+	request(build_info_url(this.id), {
+		success: (result) => {
+			result = JSON.parse(result);
+
+			// If a particular build step is selected, use that. If not, use the
+			// last one with an output log url
+			let selected_step = action_index;
+			if (selected_step === undefined) {
+				selected_step = default_step(result);				
+			}
+
+			// If no steps have output logs or no steps have run, don't do anything
+			if (selected_step === false || result.steps.length == 0) {
+				let output = "No build steps have run for build " + build.id;
+				if (result.lifecycle) {
+					output += " (status: " + result.lifecycle + ")";				
+				}
+				show_this_log("    " + output, [], -1, true);
+				return;
+			}
+
+			let log_url = result.steps[selected_step].actions[0].output_url;
+			request(log_url, {
+				success: (log) => {
+					show_this_log(log, result.steps, selected_step, false);
+				},
+				error: () => {
+					show_this_log("   Could not get output log for this step", result.steps, selected_step, true);
+				}
+			});
+		},
+		error: (e) => {
+			show_this_log("   " + get_error_text(this), [], -1, true);
+		}
 	});
 }
 
-function build_display(build, raw_log, url, build_result, selected_step, is_err) {
+function build_display(build, raw_log, steps, selected_step, is_err) {
 	let container = document.createElement("div");
 	let div = document.createElement("div");
 	let processed_log = process_log(raw_log);
@@ -245,17 +363,15 @@ function build_display(build, raw_log, url, build_result, selected_step, is_err)
 	let actions = [];
 	let select_index = -1;
 
-	if (build_result.steps) {
-		build_result.steps.forEach((step, index) => {
-			if (step.name === selected_step) {
-				select_index = index;
-			}
-			actions.push({
-				value: step.name,
-				selected: step.name === selected_step
-			});
+	steps.forEach((step, index) => {
+		if (step.name === selected_step) {
+			select_index = index;
+		}
+		actions.push({
+			value: step.name,
+			selected: step.name === selected_step
 		});
-	}
+	});
 
 	if (actions.length > 0) {
 		let span = document.createElement("span");
@@ -368,11 +484,11 @@ function build_spinner(build) {
 }
 
 function build_info_url(build_id) {
-	return `https://circleci.com/api/v1.1/project/${vcs}/${username}/${repo}/${build_id}?circle-token=${token}`;
+	return `https://circleci.com/api/v1.1/project/${vcs}/${username}/${repo}/${build_id}?circle-token=${CIRCLECI_TOKEN}`;
 }
 
 function build_retry_url(build_id) {
-	return `https://circleci.com/api/v1.1/project/${vcs}/${username}/${repo}/${build_id}/ssh?circle-token=${token}`;
+	return `https://circleci.com/api/v1.1/project/${vcs}/${username}/${repo}/${build_id}/ssh?circle-token=${CIRCLECI_TOKEN}`;
 }
 
 function nthFromEnd(str, pat, n) {
@@ -394,46 +510,14 @@ function nFromEnd(str, pat, n) {
     return str.substring(last_index);
 }
 
-function fetch_log(build, token, action_index, callback) {
-	// First, get build summary info
-	request(build_info_url(build.id, token), {
-		success: (result) => {
-			result = JSON.parse(result);
-
-			// If a particular build step is selected, use that. If not, use the
-			// last one with an output log url
-			let i = action_index;
-			if (i === undefined) {
-				i = default_step(result);				
-			}
-
-			// If no steps have output logs or no steps have run, don't do anything
-			if (i === false || result.steps.length == 0) {
-				let output = "No build steps have run for build " + build.id;
-				if (result.lifecycle) {
-					output += " (status: " + result.lifecycle + ")";				
-				}
-				callback("    " + output, "", {}, "", true);
-				return;
-			}
-
-			let url = result.steps[i].actions[0].output_url;
-			let name = result.steps[i].name;
-
-			// Get the output log of the build step from AWS
-			request(url, {
-				success: (log) => {
-					callback(log, url, result, name, false);
-				},
-				error: () => {
-					callback("   Could not get output log for build " + build.id, "", {}, "", true);
-				}
-			})
-		},
-		error: (e) => {
-			callback("   " + get_error_text(build), "", {}, "", true);
-		}
-	});
+function isSupported(build) {
+	if (build.name.includes('travis-ci')) {
+		return false;
+	}
+	if (build.link.includes("jenkins/")) {
+		return false;
+	}
+	return true;
 }
 
 function get_error_text(build) {

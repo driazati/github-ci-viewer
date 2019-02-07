@@ -47,7 +47,7 @@ function get_build(merge_status_item) {
 
 	return {
 		element: merge_status_item,
-		name: merge_status_item.querySelector('strong').innerText,
+		name: merge_status_item.querySelector('strong').innerText.trim(),
 		link: link,
 		id: get_build_id(link),
 		status: get_status(merge_status_item)

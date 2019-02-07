@@ -29,10 +29,16 @@ let properties = [
 		'title': '<a href="https://github.com/settings/tokens">GitHub OAuth Token</a>',
 		'short': 'GitHub OAuth Token'
 	},
-		{
+	{
 		'name': 'disable_pjax',
 		'title': 'Disable <a href="https://github.blog/2011-04-09-issues-2-0-the-next-generation/#pjax-next-generation-partial-page-loads">pjax</a> (enter "1" to disable)',
 		'short': 'Disable pjax'
+	},
+	{
+		'name': 'high_signal_builds',
+		'title': 'high signal builds',
+		'short': 'high signal builds',
+		'type': 'textarea'
 	},
 
 ]
@@ -75,10 +81,16 @@ properties.forEach((prop) => {
 	table.appendChild(tr);
 
 	let div = document.createElement('div');
-	div.innerHTML = `<h1>${prop.title}</h1><input id="${prop.name}">`;
+	let input_html = `<input id="${prop.name}">`;
+	if (prop.type) {
+		if (prop.type == 'textarea') {
+			input_html = `<textarea id="${prop.name}"></textarea>`
+		}
+	}
+	div.innerHTML = `<h1>${prop.title}</h1>${input_html}`;
 	inputs.appendChild(div);
 
-	prop.input = div.querySelector('input');
+	prop.input = div.querySelector(prop.type || 'input');
 	prop.display = tr.querySelector('.value');
 });
 
