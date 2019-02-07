@@ -5,6 +5,8 @@ chrome.storage.local.get('info', (items) => {
 	document.addEventListener('pjax:end', progress_bar_main);
 });
 
+console.log("hi");
+
 function parse_num(row) {
 	let id = row.getAttribute('id');
 	let matches = id.match(/\d+/g);
@@ -25,11 +27,6 @@ function add_bar(row, progress) {
 function progress_bar_main() {
 	let rows = document.querySelectorAll('.js-issue-row');
 	let builds = document.querySelectorAll('.commit-build-statuses a');
-	if (rows.length == 0) {
-		// if no builds found, try again 500 ms
-		setTimeout(progress_bar_main, 500);
-		return;
-	}
 
 	let nums = [];
 	for (let i = 0; i < rows.length; ++i) {
@@ -39,8 +36,7 @@ function progress_bar_main() {
 	for (let i = 0; i < rows.length; ++i) {
 		let build = rows[i].querySelector('.commit-build-statuses a');
 		if (!build) {
-			setTimeout(progress_bar_main, 500);
-			return;
+			continue;
 		}
 		let is_pending = build.classList.contains('bg-pending');
 		let span = document.createElement('span');
@@ -62,7 +58,11 @@ function progress_bar_main() {
 		let results = data['data']['repository'];
 		for (let i = 0; i < rows.length; ++i) {
 			let pr = results['p' + nums[i]];
-			let statuses = pr['commits']['nodes'][0]['commit']['status']['contexts'];
+			let status = pr['commits']['nodes'][0]['commit']['status'];
+			if (!status) {
+				continue;
+			}
+			let statuses = status['contexts'];
 			let progress = {
 				good: statuses.reduce((pre, curr) => (curr.state === "SUCCESS") ? ++pre : pre, 0),
 				pending: statuses.reduce((pre, curr) => (curr.state === "PENDING") ? ++pre : pre, 0),

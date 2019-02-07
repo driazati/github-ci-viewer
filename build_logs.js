@@ -147,7 +147,7 @@ function find_and_add_merge_items(event) {
 }
 
 
-function merge_status_item_added(merge_status_item) {
+function merge_status_item_added(merge_status_item, recurse) {
 	if (!isCIStatusElement(merge_status_item)) {
 		// Not a CI build, don't do anything with it
 		return;
@@ -160,6 +160,12 @@ function merge_status_item_added(merge_status_item) {
 		// This one has already had a click event attached, ignore it
 		return;
 	}
+
+	// For some reason some build items get skipped, so re-check the whole list
+	// each time.
+	// if (recurse) {
+	// 	find_and_add_merge_items();		
+	// }
 
 	// Get build info and set up click event listener on item
 	let build = get_build(merge_status_item);
@@ -211,11 +217,20 @@ function show_failed_build_step(merge_status_item, build) {
 			let last_step = default_step(result);
 			let log_url = result.steps[last_step].actions[0].output_url;
 
-			let text = "— Your tests failed on CircleCI"
-				+ " (" + result.steps[last_step].name + ")";
+			let failed_span = document.createElement('span');
+			failed_span.innerText = "— Your tests failed on CircleCI";
+
+			let reason_span = document.createElement('span');
+			reason_span.style['font-weight'] = 'bold';
+			reason_span.innerText = " (" + result.steps[last_step].name + ")";
+
+			// let text = "— Your tests failed on CircleCI"
+			// 	+ " (" + result.steps[last_step].name + ")";
 
 			test_status.removeChild(test_status.childNodes[2]);
-			test_status.appendChild(document.createTextNode(text));
+			test_status.appendChild(failed_span);
+			test_status.appendChild(reason_span);
+			// test_status.appendChild(document.createTextNode(text));
 
 			let small_result = {
 				steps: result.steps,
@@ -242,6 +257,35 @@ function show_log(raw_log, steps, selected_step, element, is_err) {
 	insert_after(this.element, current_display);
 }
 
+function get_and_show_log(result, selected_step) {
+	let show_this_log = show_log.bind(this);
+	// If a particular build step is selected, use that. If not, use the
+	// last one with an output log url
+	if (selected_step === undefined) {
+		selected_step = default_step(result);				
+	}
+
+	// If no steps have output logs or no steps have run, don't do anything
+	if (selected_step === false || result.steps.length == 0) {
+		let output = "No build steps have run for build " + this.id;
+		if (result.lifecycle) {
+			output += " (status: " + result.lifecycle + ")";				
+		}
+		show_this_log("    " + output, [], -1, true);
+		return;
+	}
+
+	let log_url = result.steps[selected_step].actions[0].output_url;
+	request(log_url, {
+		success: (log) => {
+			show_this_log(log, result.steps, selected_step, false);
+		},
+		error: () => {
+			show_this_log("   Could not get output log for this step", result.steps, selected_step, true);
+		}
+	});
+}
+
 
 function show_build(action_index, is_updating, merge_status_item) {
 	clear_current_display();
@@ -252,69 +296,17 @@ function show_build(action_index, is_updating, merge_status_item) {
 	current_spinner = build_spinner(this);
 	insert_after(this.element, current_spinner);
 
-	let show_this_log = show_log.bind(this);
 
 	if (merge_status_item && merge_status_item.hasAttribute('circleci_result')) {
 		let result = JSON.parse(merge_status_item.getAttribute('circleci_result'));
-		// If a particular build step is selected, use that. If not, use the
-		// last one with an output log url
-		let selected_step = action_index;
-		if (selected_step === undefined) {
-			selected_step = default_step(result);				
-		}
-
-		// If no steps have output logs or no steps have run, don't do anything
-		if (selected_step === false || result.steps.length == 0) {
-			let output = "No build steps have run for build " + build.id;
-			if (result.lifecycle) {
-				output += " (status: " + result.lifecycle + ")";				
-			}
-			show_this_log("    " + output, [], -1, true);
-			return;
-		}
-
-		let log_url = result.steps[selected_step].actions[0].output_url;
-		request(log_url, {
-			success: (log) => {
-				show_this_log(log, result.steps, selected_step, false);
-			},
-			error: () => {
-				show_this_log("   Could not get output log for this step", result.steps, selected_step, true);
-			}
-		});
+		get_and_show_log.call(this, result, action_index);
 		return;
 	}
 
 	request(build_info_url(this.id), {
 		success: (result) => {
 			result = JSON.parse(result);
-
-			// If a particular build step is selected, use that. If not, use the
-			// last one with an output log url
-			let selected_step = action_index;
-			if (selected_step === undefined) {
-				selected_step = default_step(result);				
-			}
-
-			// If no steps have output logs or no steps have run, don't do anything
-			if (selected_step === false || result.steps.length == 0) {
-				let output = "No build steps have run for build " + build.id;
-				if (result.lifecycle) {
-					output += " (status: " + result.lifecycle + ")";				
-				}
-				show_this_log("    " + output, [], -1, true);
-				return;
-			}
-
-			let log_url = result.steps[selected_step].actions[0].output_url;
-			request(log_url, {
-				success: (log) => {
-					show_this_log(log, result.steps, selected_step, false);
-				},
-				error: () => {
-					show_this_log("   Could not get output log for this step", result.steps, selected_step, true);
-				}
-			});
+			get_and_show_log.call(this, result, action_index);
 		},
 		error: (e) => {
 			show_this_log("   " + get_error_text(this), [], -1, true);
@@ -360,17 +352,12 @@ function build_display(build, raw_log, steps, selected_step, is_err) {
 		div.appendChild(next_btn);
 	}
 
-	let actions = [];
-	let select_index = -1;
-
-	steps.forEach((step, index) => {
-		if (step.name === selected_step) {
-			select_index = index;
-		}
-		actions.push({
+	let select_index = selected_step;
+	let actions = steps.map((step, index) => {
+		return {
 			value: step.name,
-			selected: step.name === selected_step
-		});
+			selected: index === selected_step
+		};
 	});
 
 	if (actions.length > 0) {
@@ -556,8 +543,7 @@ function process_log(raw, is_full) {
 // those
 let observer = new MutationObserver(function(mutations) {
 	mutations.forEach(function(mutation) {
-		if (mutation.addedNodes.length === 1) {
-			let node = mutation.addedNodes[0];
+		mutation.addedNodes.forEach((node) => {
 			if (node.tagName && node.tagName == 'DIV') {
 				// console.log(mutation);
 			} else {
@@ -566,15 +552,15 @@ let observer = new MutationObserver(function(mutations) {
 
 			// Check if the added node itself is a 'div.merge-status-item'
 			if (node.classList && node.classList.contains('merge-status-item')) {
-				merge_status_item_added(node);
+				merge_status_item_added(node, /*recurse=*/true);
 				return;
 			}
 
 			// Check if the added node contains any 'div.merge-status-item's
 			let items = node
 				.querySelectorAll('div.merge-status-item')
-				.forEach(merge_status_item_added)
-		}
+				.forEach((item) => merge_status_item_added(item, /*recurse=*/true));
+		});
 	});
 });
 observer.observe(document, {
