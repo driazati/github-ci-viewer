@@ -98,4 +98,6 @@ function request(url, opts) {
 	};
 
 	req.send("");
+
+	return req;
 }

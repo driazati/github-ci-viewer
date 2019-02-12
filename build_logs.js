@@ -22,6 +22,8 @@ chrome.storage.local.get('info', (items) => {
 	}
 });
 
+let build_has_pending_request = {};
+
 function shouldDoNothing(event) {
 	// If the user clicked on the 'Details' link, don't do anything
 	return event.target.tagName.toLowerCase() === 'a';
@@ -202,6 +204,34 @@ function merge_status_item_added(merge_status_item, recurse) {
 	});
 
 	merge_status_item.setAttribute('circle_ci_viewer_has_seen', true);
+
+	// Make link have 'fullLogs=true' so that all build steps are shown
+	let details_link = merge_status_item.querySelector('a.status-actions');
+	let details_url = new URL(details_link.href);
+	details_url.searchParams.set('fullLogs', 'true');
+	console.log("set to", details_url.href);
+	details_link.href = details_url.href;
+}
+
+function circle_ci_request(build, obj) {
+	if (build_has_pending_request[build.name]) {
+		build_has_pending_request[build.name].abort();
+	}
+	let xhr = request(build_info_url(build.id), {
+		success: (result) => {
+			build_has_pending_request[build.name] = false;
+			if (obj.success) {
+				obj.success(result);
+			}
+		},
+		error: (e) => {
+			build_has_pending_request[build.name] = false;
+			if (obj.error) {
+				obj.error(e);
+			}			
+		}
+	});
+	build_has_pending_request[build.name] = xhr;
 }
 
 function show_failed_build_step(merge_status_item, build) {
@@ -210,7 +240,7 @@ function show_failed_build_step(merge_status_item, build) {
 	let test_status = merge_status_item.querySelector('div.text-gray');
 
 	// // 2nd child node is the text "— Your tests failed on CircleCI"
-	request(build_info_url(build.id), {
+	circle_ci_request(build, {
 		success: (result) => {
 			result = JSON.parse(result);
 
@@ -246,7 +276,7 @@ function show_failed_build_step(merge_status_item, build) {
 	});
 }
 
-function show_log(raw_log, steps, selected_step, element, is_err) {
+function show_log(raw_log, steps, selected_step, is_err) {
 	remove(current_spinner);
 	remove(current_display);
 
@@ -257,8 +287,15 @@ function show_log(raw_log, steps, selected_step, element, is_err) {
 	insert_after(this.element, current_display);
 }
 
-function get_and_show_log(result, selected_step) {
+function get_and_show_log(result, selected_step, error) {
 	let show_this_log = show_log.bind(this);
+
+
+	if (error) {
+		show_this_log("    " + error, [], -1, true);
+		return;
+	}
+
 	// If a particular build step is selected, use that. If not, use the
 	// last one with an output log url
 	if (selected_step === undefined) {
@@ -303,13 +340,18 @@ function show_build(action_index, is_updating, merge_status_item) {
 		return;
 	}
 
-	request(build_info_url(this.id), {
+	if (!isSupported(this)) {
+		get_and_show_log.call(this, {steps: []}, -1, get_error_text(this));
+		return;
+	}
+
+	circle_ci_request(build, {
 		success: (result) => {
 			result = JSON.parse(result);
 			get_and_show_log.call(this, result, action_index);
 		},
 		error: (e) => {
-			show_this_log("   " + get_error_text(this), [], -1, true);
+			get_and_show_log.call(this, {steps: []}, -1, get_error_text(this));
 		}
 	});
 }
