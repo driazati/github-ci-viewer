@@ -209,7 +209,6 @@ function merge_status_item_added(merge_status_item, recurse) {
 	let details_link = merge_status_item.querySelector('a.status-actions');
 	let details_url = new URL(details_link.href);
 	details_url.searchParams.set('fullLogs', 'true');
-	console.log("set to", details_url.href);
 	details_link.href = details_url.href;
 }
 

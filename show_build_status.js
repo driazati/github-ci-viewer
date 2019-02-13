@@ -5,8 +5,6 @@ chrome.storage.local.get('info', (items) => {
 	document.addEventListener('pjax:end', progress_bar_main);
 });
 
-console.log("hi");
-
 function parse_num(row) {
 	let id = row.getAttribute('id');
 	let matches = id.match(/\d+/g);
@@ -20,8 +18,12 @@ function add_bar(row, progress) {
 	
 	// remove old status indicators
 	let container = row.querySelector('div.commit-build-statuses');
+	if (!container) {
+		return false;
+	}
 	container.innerHTML = "";
 	container.appendChild(bar);
+	return true;
 }
 
 function progress_bar_main() {
