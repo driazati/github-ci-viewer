@@ -19,6 +19,8 @@ chrome.storage.local.get('info', (items) => {
 
 	if (high_signal_builds) {
 		high_signal_builds = high_signal_builds.split("\n").map((item) => item.trim());
+	} else {
+		high_signal_builds = "";
 	}
 });
 
@@ -344,7 +346,7 @@ function show_build(action_index, is_updating, merge_status_item) {
 		return;
 	}
 
-	circle_ci_request(build, {
+	circle_ci_request(this, {
 		success: (result) => {
 			result = JSON.parse(result);
 			get_and_show_log.call(this, result, action_index);
