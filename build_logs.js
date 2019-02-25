@@ -174,8 +174,7 @@ function merge_status_item_added(merge_status_item, recurse) {
 	// Get build info and set up click event listener on item
 	let build = get_build(merge_status_item);
 
-	if (build.status === 'failed' && high_signal_builds.includes(build.name)) {
-	// if (build.status === 'failed' && high_signal_builds.includes(build.name.trim())) {
+	if (build.status === 'failed' && high_signal_builds && high_signal_builds.includes(build.name)) {
 		// Set red background for important build failure
 		merge_status_item.style['background-color'] = '#ff000030';
 	}
