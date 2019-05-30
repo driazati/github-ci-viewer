@@ -356,6 +356,48 @@ function show_build(action_index, is_updating, merge_status_item) {
 	});
 }
 
+function get_log_div(processed_log, log_lines) {
+	let pre = document.createElement("div");
+	pre.style['white-space'] = 'pre';
+	pre.style['font-family'] = '"Lucida Console", Monaco, monospace';
+
+	let regex = /(FAIL.*)|(ERROR.*)|(self\.assert.*)|([A-Za-z]*Error.*)/g
+	let shown_log = nFromEnd(processed_log, '\n', log_lines);
+	// shown_log = escape_html(shown_log);
+
+	// highlight code
+	let new_shown_log = "";
+	shown_log.split("\n").forEach(line => {
+		let match = line.match(/^([a-zA-Z]+ \d+ \d+:\d+:\d+ )(.*)/);
+		if (!match || match.length < 3)  {
+			new_shown_log += "\n";
+			return;
+		}
+		let timestamp = match[1];
+		let rest = match[2];
+		new_shown_log += timestamp + Prism.highlight(rest, Prism.languages.python, 'python');
+		new_shown_log += "\n";
+	});
+	shown_log = new_shown_log;
+
+
+	shown_log = shown_log.replace(regex, (str) => {
+		return "<span style='font-weight: bold;background-color: rgba(255, 40, 40, 0.2);padding: 1px 2px 1px 6px;'>" + str + "</span>";
+	});
+
+	// replace python error names with friendlier ones
+	let test_regex = /((ERROR: )|(FAIL: ))([a-zA-Z0-9_]+) \([a-zA-Z0-9_]+\.([a-zA-Z0-9_]+)\)/g
+	shown_log = shown_log.replace(test_regex, (full_match, fail_type, something, something_else, test_name, module_name) => {
+		// debugger;
+		return fail_type + module_name + " " + test_name;
+	})
+	pre.setAttribute('num_lines', log_lines);
+	pre.innerHTML = shown_log;
+	pre.classList.add('log_viewer');
+
+	return pre;
+}
+
 function build_display(build, raw_log, steps, selected_step, is_err) {
 	let container = document.createElement("div");
 	let div = document.createElement("div");
@@ -364,12 +406,14 @@ function build_display(build, raw_log, steps, selected_step, is_err) {
 		let next_btn = build_btn({
 			text: "Prev 20 lines",
 			click: () => {
-				pre.removeChild(pre.firstChild);
+				let parent = pre.parentNode;
 				let old_num_lines = parseInt(pre.getAttribute('num_lines'));
 				let new_num_lines = old_num_lines + 20;
-				pre.setAttribute('num_lines', new_num_lines);
-				let text_node = document.createTextNode(nFromEnd(processed_log, '\n', new_num_lines));
-				pre.appendChild(text_node);
+
+				parent.removeChild(pre);
+				pre = get_log_div(processed_log, new_num_lines);
+				parent.appendChild(pre);
+				parent.appendChild(pre);
 			}
 		});
 
@@ -463,10 +507,20 @@ function build_display(build, raw_log, steps, selected_step, is_err) {
 	div.classList.add('log-actions');
 	container.appendChild(div);
 
-	let pre = document.createElement("pre");
-	pre.setAttribute('num_lines', log_lines);
-	pre.appendChild(document.createTextNode(nFromEnd(processed_log, '\n', log_lines)));
-	pre.classList.add('log_viewer');
+	let pre = get_log_div(processed_log, log_lines);
+	// document.createElement("div");
+	// pre.style['white-space'] = 'pre';
+	// pre.style['font-family'] = '"Lucida Console", Monaco, monospace';
+	// let regex = /(FAIL.*)|(ERROR.*)|(self\.assert.*)|([A-Za-z]*Error.*)/g
+	// let shown_log = nFromEnd(processed_log, '\n', log_lines);
+	// shown_log = escape_html(shown_log);
+	// shown_log = shown_log.replace(regex, (str) => {
+	// 	return "<span style='color: red; font-weight: 500'>" + str + "</span>";
+	// });
+	// pre.setAttribute('num_lines', log_lines);
+	// pre.innerHTML = shown_log;
+	// // pre.appendChild(document.createTextNode(nFromEnd(processed_log, '\n', log_lines)));
+	// pre.classList.add('log_viewer');
 
 	// Add log content
 	container.appendChild(pre);

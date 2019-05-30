@@ -1,8 +1,8 @@
 let github_token = undefined;
 chrome.storage.local.get('info', (items) => {
 	github_token = items.info.github_token;
-	progress_bar_main();
-	document.addEventListener('pjax:end', progress_bar_main);
+	build_status_main();
+	document.addEventListener('pjax:end', build_status_main);
 });
 
 function parse_num(row) {
@@ -11,9 +11,9 @@ function parse_num(row) {
 	return matches[0];
 }
 
-function add_bar(row, progress) {
+function add_bar(row, progress, bar_width) {
 	let build = row.querySelector('.commit-build-statuses a');
-	let bar = progress_bar(progress);
+	let bar = progress_bar(progress, bar_width);
 	bar.setAttribute('style', 'margin-left: 4px');
 	
 	// remove old status indicators
@@ -26,7 +26,76 @@ function add_bar(row, progress) {
 	return true;
 }
 
-function progress_bar_main() {
+function add_bucketed_bars(row, pr) {
+
+}
+
+function add_diff_stat(row, pr) {
+	let small_text_div = row.querySelector("div.mt-1.text-small");
+
+	let additions = parseInt(pr['additions']);
+	let deletions = parseInt(pr['deletions']);
+	let changedFiles = parseInt(pr['changedFiles']);
+
+	let div = document.createElement("div");
+	div.style.display = "inline";
+	div.innerHTML = `<span style="color: green">+${additions}</span> / <span style="color: red">-${deletions}</span> (${changedFiles})`;
+
+	small_text_div.appendChild(div);
+}
+
+function add_mergable(row, pr) {
+	let small_text_div = row.querySelector("div.mt-1.text-small");
+
+	let div = document.createElement("div");
+	div.style.display = "inline";
+	if (pr['mergeable'] == 'MERGEABLE') {
+		div.innerHTML = "✅"
+	} else if (pr['mergeable'] == 'CONFLICTING') {
+		div.innerHTML = "❗";
+	} else {
+		div.innerHTML = "❔";
+	}
+
+
+
+	small_text_div.appendChild(div);
+}
+
+function add_head_ref(row, pr) {
+	let small_text_div = row.querySelector("div.mt-1.text-small");
+
+	let div = document.createElement("div");
+	div.style.display = "inline";
+	div.style['margin-right'] = '8px';
+	if (pr['headRef']) {
+		div.innerText = pr['headRef']['name'];		
+	}
+
+
+	small_text_div.appendChild(div);
+}
+
+function add_phabricator_diff(row, pr) {
+	let small_text_div = row.querySelector("div.mt-1.text-small");
+
+	let a = document.createElement("a");
+
+	let body = pr['bodyText'];
+	let match = body.match(/D\d+/);
+	if (!match) {
+		return;
+	}
+	
+	a.href = `https://our.internmc.facebook.com/intern/diff/${match}/`;
+	a.innerText = match;
+	a.style['margin-left'] = '6px';
+
+
+	small_text_div.appendChild(a);
+}
+
+function build_status_main() {
 	let rows = document.querySelectorAll('.js-issue-row');
 	let builds = document.querySelectorAll('.commit-build-statuses a');
 
@@ -46,7 +115,15 @@ function progress_bar_main() {
 		if (is_pending) {
 			progress.pending = progress.total;
 		}
-		add_bar(rows[i], progress);
+		add_bar(rows[i], progress, 100);
+
+		let labels = rows[i].querySelectorAll("a.IssueLabel");
+		iterable_map(labels, (label) => {
+			let new_color = label.style['background-color']
+				.replace(")", ", 0.5)")
+				.replace("rgb", "rgba");
+			label.style['background-color'] = new_color;
+		})
 	}
 
 	if (!github_token) {
@@ -71,7 +148,15 @@ function progress_bar_main() {
 				total: statuses.length
 			}
 			add_bar(rows[i], progress);
+			add_buckets(rows[i], pr);
+			add_mergable(rows[i], pr);
+			add_head_ref(rows[i], pr);
+			add_diff_stat(rows[i], pr);
+			add_phabricator_diff(rows[i], pr);
 		}
+
+		// Add diff info
+		// add_phabricator_diff_info();
 	});
 }
 
@@ -85,12 +170,11 @@ function parse_progress(text) {
 	};
 }
 
-function progress_bar(progress) {
+function progress_bar(progress, bar_width) {
 	let red = '#cb2431';
 	let yellow = '#dbab09';
 	let green = 'rgb(30, 206, 71)';
 
-	let bar_width = 100;
 	let svg = make_node("svg", {width: bar_width, height: 10});
 	let scaler = bar_width / progress.total;
 
@@ -138,7 +222,13 @@ function build_graphql_query(numbers) {
 		query += 'id' + '\n';
 		query += 'number' + '\n';
 		query += 'title' + '\n';
-		query += 'commits(last: 1) {nodes {commit {status {contexts {state}}}}}' + '\n';
+		query += 'deletions' + '\n';
+		query += 'additions' + '\n';
+		query += 'bodyText' + '\n';
+		query += 'changedFiles' + '\n';
+		query += 'mergeable' + '\n';
+		query += 'headRef {\nname\n}' + '\n';
+		query += 'commits(last: 1) {nodes {commit {status {contexts {state\ncontext\n}}}}}' + '\n';
 		query += '}';
 		return query;
     });
@@ -147,6 +237,49 @@ function build_graphql_query(numbers) {
     query += pull_requests.join("\n");
     query += "} }";
     return query;
+}
+
+function build_fb_graphql_query() {
+	let query = `query get_pull_request($query: [PhabricatorDiffQueryParams!]!) {
+phabricator_diff_query(query_params: $query) {
+results {
+nodes {
+id,
+opensource_github_pull_request {
+  is_diff_stale
+}
+}
+}
+}
+}`;
+	return query;
+}
+
+function add_phabricator_diff_info() {
+	console.log("Adding diff info")
+	let query = build_fb_graphql_query();
+	let data = {
+		"0": {
+			"numbers": [15232342, 15209004]
+		}
+	};
+	// status_request('https://interngraph.intern.facebook.com/graphql/', {
+	status_request('https://our.internmc.facebook.com/intern/api/graphql/', {
+		body: JSON.stringify({
+			"doc": query,
+			"variables": JSON.stringify(data),
+			// "oauth_token": fb_token
+		}),
+		success: (data) => {
+			console.log("GOT ");
+			console.log(data);
+		},
+		error: (req) => {
+			console.log(req);
+		},
+		accept: 'text/html'
+	});
+
 }
 
 function remove(element) {
@@ -168,7 +301,8 @@ function status_request(url, opts) {
 	const req = new XMLHttpRequest();
 
 	req.open(method, url);
-	req.setRequestHeader('Accept', 'application/json');
+	const accept = opts.accept || 'application/json';
+	req.setRequestHeader('Accept', accept);
 	req.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
 	if (github_token) {
 		req.setRequestHeader("Authorization", "bearer " + github_token);		

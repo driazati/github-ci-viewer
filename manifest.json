@@ -19,8 +19,8 @@
 		"matches": [
 			"*://github.com/*/pull*"
 		],
-		"js": ["lib.js", "build_info.js", "build_logs.js", "unminimize_comments.js"],
-		"css": ["widescreen.css"],
+		"js": ["lib.js", "prism.js", "build_info.js", "build_logs.js", "unminimize_comments.js"],
+		"css": ["prism.css", "widescreen.css"],
 		"run_at": "document_start"
 	}, {
 		"matches": [
@@ -41,6 +41,8 @@
 		"storage",
 		"https://github.com/*",
 		"https://circleci.com/*",
-		"https://*.amazonaws.com/"
+		"https://*.amazonaws.com/",
+		"https://our.internmc.facebook.com/intern/api/graphql/",
+		"https://interngraph.intern.facebook.com/graphql"
 	]
 }

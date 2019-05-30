@@ -72,6 +72,15 @@ function iterable_map(iterable, map) {
 	return ret;
 }
 
+function escape_html(unsafe) {
+    return unsafe
+         // .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         // .replace(/"/g, "&quot;")
+         // .replace(/'/g, "&#039;");
+ }
+
 function request(url, opts) {
 	const method = opts.method || 'GET';
 	const body = opts.body || {};
