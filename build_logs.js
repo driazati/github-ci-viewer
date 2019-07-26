@@ -174,6 +174,13 @@ function merge_status_item_added(merge_status_item, recurse) {
 	// Get build info and set up click event listener on item
 	let build = get_build(merge_status_item);
 
+	let build_text = merge_status_item.querySelector('div [title]').querySelector('strong');
+	if (build_text && build.name.includes('ci/circleci: ')) {
+		console.log(build)
+		build_text.innerText = build.name.replace('ci/circleci: ', '');
+	}
+	// build_text.outerText = 'hello'
+
 	if (build.status === 'failed' && high_signal_builds && high_signal_builds.includes(build.name)) {
 		// Set red background for important build failure
 		merge_status_item.style['background-color'] = '#ff000030';
@@ -361,41 +368,50 @@ function get_log_div(processed_log, log_lines) {
 	pre.style['white-space'] = 'pre';
 	pre.style['font-family'] = '"Lucida Console", Monaco, monospace';
 
-	let regex = /(FAIL.*)|(ERROR.*)|(self\.assert.*)|([A-Za-z]*Error.*)/g
 	let shown_log = nFromEnd(processed_log, '\n', log_lines);
-	// shown_log = escape_html(shown_log);
+	shown_log = format_test_log(shown_log);
 
-	// highlight code
-	let new_shown_log = "";
-	shown_log.split("\n").forEach(line => {
-		let match = line.match(/^([a-zA-Z]+ \d+ \d+:\d+:\d+ )(.*)/);
-		if (!match || match.length < 3)  {
-			new_shown_log += "\n";
-			return;
-		}
-		let timestamp = match[1];
-		let rest = match[2];
-		new_shown_log += timestamp + Prism.highlight(rest, Prism.languages.python, 'python');
-		new_shown_log += "\n";
-	});
-	shown_log = new_shown_log;
-
-
-	shown_log = shown_log.replace(regex, (str) => {
-		return "<span style='font-weight: bold;background-color: rgba(255, 40, 40, 0.2);padding: 1px 2px 1px 6px;'>" + str + "</span>";
-	});
-
-	// replace python error names with friendlier ones
-	let test_regex = /((ERROR: )|(FAIL: ))([a-zA-Z0-9_]+) \([a-zA-Z0-9_]+\.([a-zA-Z0-9_]+)\)/g
-	shown_log = shown_log.replace(test_regex, (full_match, fail_type, something, something_else, test_name, module_name) => {
-		// debugger;
-		return fail_type + module_name + " " + test_name;
-	})
 	pre.setAttribute('num_lines', log_lines);
 	pre.innerHTML = shown_log;
 	pre.classList.add('log_viewer');
 
 	return pre;
+}
+
+function format_build_log(text) {
+	return text;
+}
+
+
+function format_test_log(text) {
+	let new_text = "";
+	text.split("\n").forEach(line => {
+		let match = line.match(/^([a-zA-Z]+ \d+ \d+:\d+:\d+ )(.*)/);
+		if (!match || match.length < 3)  {
+			new_text += "\n";
+			return;
+		}
+		let timestamp = match[1];
+		let rest = match[2];
+		new_text += timestamp + Prism.highlight(rest, Prism.languages.python, 'python');
+		new_text += "\n";
+	});
+	text = new_text;
+
+
+	// Highlight FAIL and ERROR lines red
+	let regex = /(FAIL.*)|(ERROR.*)|(self\.assert.*)|([A-Za-z]*Error.*)/g
+	text = text.replace(regex, (str) => {
+		return "<span style='font-weight: bold;background-color: rgba(255, 40, 40, 0.2);padding: 1px 2px 1px 6px;'>" + str + "</span>";
+	});
+
+	// Replace python error names with friendlier ones that can actually be copy-pasted
+	let test_regex = /((ERROR: )|(FAIL: ))([a-zA-Z0-9_]+) \([a-zA-Z0-9_]+\.([a-zA-Z0-9_]+)\)/g
+	text = text.replace(test_regex, (full_match, fail_type, something, something_else, test_name, module_name) => {
+		return fail_type + module_name + " " + test_name;
+	});
+
+	return text;
 }
 
 function build_display(build, raw_log, steps, selected_step, is_err) {

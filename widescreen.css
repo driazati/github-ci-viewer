@@ -175,3 +175,7 @@ button.discussion-sidebar-toggle {
 .merge-status-list {
   max-height: none;
 }
+
+.container-lg {
+  max-width: 100% !important;
+}

@@ -1,98 +1,132 @@
+let _unused_old_properties = {
+	// {
+	// 	'name': 'disable_pjax',
+	// 	'title': 'Disable <a href="https://github.blog/2011-04-09-issues-2-0-the-next-generation/#pjax-next-generation-partial-page-loads">pjax</a> (enter "1" to disable)',
+	// 	'short': 'Disable pjax'
+	// },
+	// {
+	// 	'name': 'high_signal_builds',
+	// 	'title': 'high signal builds',
+	// 	'short': 'high signal builds',
+	// 	'type': 'textarea'
+	// },
+	// {
+	// 	'name': 'regex_placeholder',
+	// 	'title': 'Default line regex',
+	// 	'short': 'Default line regex'
+	// },
+	// {
+	// 	'name': 'username',
+	// 	'short': 'Username'
+	// },
+	// {
+	// 	'name': 'repo',
+	// 	'title': 'CircleCI Repo',
+	// },
+};
+
 let properties = [
 	{
-		'name': 'token',
-		'title': 'Enter your <a href="https://circleci.com/docs/2.0/managing-api-tokens/#creating-a-personal-api-token">CircleCI auth token</a>',
-		'short': 'CircleCI Token'
+		'name': 'CircleCI Token',
+		'title': 'CircleCI OAuth Token <a href="https://circleci.com/account/api">(get one here)</a>',
+		'desc': "This is needed to make requests to the CircleCI API"
 	},
 	{
-		'name': 'username',
-		'title': 'CircleCI Username',
-		'short': 'Username'
-	},
-	{
-		'name': 'repo',
-		'title': 'CircleCI Repo',
-		'short': 'Repo'
-	},
-	{
-		'name': 'num_lines',
+		'name': 'Tail Lines',
 		'title': 'Number of tail lines to show',
-		'short': 'Tail lines'
+		'default': 100
 	},
 	{
-		'name': 'regex_placeholder',
-		'title': 'Default line regex',
-		'short': 'Default line regex'
+		'name': 'GitHub Token',
+		'title': 'GitHub OAuth Token <a href="https://github.com/settings/tokens">(get one here, add "repo" permissions)</a>',
+		'desc': 'This is needed to make requests to the GitHub API'
 	},
-	{
-		'name': 'github_token',
-		'title': '<a href="https://github.com/settings/tokens">GitHub OAuth Token</a>',
-		'short': 'GitHub OAuth Token'
-	},
-	{
-		'name': 'disable_pjax',
-		'title': 'Disable <a href="https://github.blog/2011-04-09-issues-2-0-the-next-generation/#pjax-next-generation-partial-page-loads">pjax</a> (enter "1" to disable)',
-		'short': 'Disable pjax'
-	},
-	{
-		'name': 'high_signal_builds',
-		'title': 'high signal builds',
-		'short': 'high signal builds',
-		'type': 'textarea'
-	},
+];
 
-]
-
+// Save settings to chrome.storage.local
 function save() {
-	let data = {
-	};
+	let data = {};
+
 	properties.forEach((prop) => {
 		data[prop.name] = prop.input.value.trim();
 	});
 
-	chrome.storage.local.set({'info': data}, () => {
-		status.innerText = 'Information saved';
-		setTimeout(() => {
-			status.innerText = '';
-		}, 2000);
+	document.getElementById('save').disabled = true;
+
+	chrome.storage.local.set({'config': data}, () => {
+		// After saving, show the new settings
 		show_info();
 	});
 }
 
+// Display current settings from chrome.storage.local
 function show_info() {
-	chrome.storage.local.get('info', (container) => {
+	chrome.storage.local.get('config', (container) => {
 		properties.forEach((prop) => {
-			let value = container.info[prop.name];
-			if (value === undefined) {
-				value = '';	
+			let value = container.config[prop.name];
+			if (value === undefined || value === '') {
+				prop.input.value = '';
+				prop.input.style = "box-shadow: 0px 0px 2px 3px #ff0000;";
+				prop.input.placeholder = "Required!"
+			} else {
+				prop.input.style = "";
+				prop.input.value = value;				
 			}
-			prop.input.value = value;
-			prop.display.innerText = value;
 		});
 	});
 }
 
-const table = document.getElementById('data');
-const inputs = document.getElementById('inputs');
+// Set any unset properties to their defaults (if present)
+function set_defaults(callback) {
+	let data = {};
+	chrome.storage.local.get('config', (container) => {
+		properties.forEach((prop) => {
+			let value = prop.default;
+			if (container.config && container.config[prop.name]) {
+				value = container.config[prop.name];
+			}
+			data[prop.name] = value;
+		});
+		chrome.storage.local.set({'config': data}, () => {
+			// After saving, show the new settings
+			callback();
+		});
+	});
+}
 
-properties.forEach((prop) => {
-	let tr = document.createElement('tr');
-	tr.innerHTML = `<td>${prop.short}</td><td class="value">None</td>`;
-	table.appendChild(tr);
+function change() {
+	document.getElementById('save').disabled = false;
+}
 
-	let div = document.createElement('div');
-	let input_html = `<input id="${prop.name}">`;
-	if (prop.type) {
-		if (prop.type == 'textarea') {
-			input_html = `<textarea id="${prop.name}"></textarea>`
+
+function generate_page() {
+	const inputs = document.getElementById('inputs');
+	const grey = "#e0e0e0";
+
+	// Create Settings HTML
+	properties.forEach((prop, index) => {
+		let div = document.createElement('div');
+		let input_html = `<input id="${prop.name}">`;
+		div.innerHTML = `<h2>${prop.title}</h2>${input_html}`;
+		div.style = "padding: 5px 10px 10px 10px";
+		inputs.appendChild(div);
+
+		if (index % 2 == 0) {
+			div.style.background = grey;
 		}
-	}
-	div.innerHTML = `<h1>${prop.title}</h1>${input_html}`;
-	inputs.appendChild(div);
 
-	prop.input = div.querySelector(prop.type || 'input');
-	prop.display = tr.querySelector('.value');
-});
+		prop.input = div.querySelector('input');
+		prop.input.addEventListener('input', change);
+	});
 
-document.addEventListener('DOMContentLoaded', show_info);
-document.getElementById('save').addEventListener('click', save);
+	// Show existing settings
+	show_info();
+
+	// Hook up save button
+	document.getElementById('save').addEventListener('click', save);
+}
+
+set_defaults(generate_page);
+
+
+

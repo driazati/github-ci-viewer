@@ -19,7 +19,14 @@
 		"matches": [
 			"*://github.com/*/pull*"
 		],
-		"js": ["lib.js", "prism.js", "build_info.js", "build_logs.js", "unminimize_comments.js"],
+		"js": [
+			"lib.js",
+			"ansi_up.js",
+			"prism.js",
+			"build_info.js",
+			"build_logs.js",
+			"unminimize_comments.js"
+		],
 		"css": ["prism.css", "widescreen.css"],
 		"run_at": "document_start"
 	}, {
@@ -33,7 +40,7 @@
 		"matches": [
 			"*://github.com/*"
 		],
-		"js": ["no-github-spa.js"],
+		"js": ["disable_pjax.js"],
 		"run_at": "document_end"
 	}],
 	"permissions": [
