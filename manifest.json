@@ -48,8 +48,6 @@
 		"storage",
 		"https://github.com/*",
 		"https://circleci.com/*",
-		"https://*.amazonaws.com/",
-		"https://our.internmc.facebook.com/intern/api/graphql/",
-		"https://interngraph.intern.facebook.com/graphql"
+		"https://*.amazonaws.com/"
 	]
 }
