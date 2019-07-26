@@ -22,6 +22,17 @@ function get_status(merge_status_item) {
 	}
 }
 
+function get_detail_element(merge_status_item) {
+	let links = merge_status_item.querySelectorAll('a');
+	for (let i = 0; i < links.length; i++) {
+		if (links[i].innerText === "Details") {
+			return links[i];
+		}
+	}
+
+	return undefined;
+}
+
 function get_build_id(link) {
 	if (!link) {
 		return;
@@ -31,6 +42,26 @@ function get_build_id(link) {
 		return;
 	}
 	return match[0];
+}
+
+function get_job_owner(link) {
+	// It's something like:
+	// https://circleci.com/gh/pytorch/pytorch/2288196?utm_campaign...
+
+	let match = link.match(/circleci\.com\/gh\/([a-zA-Z0-9]+)\/([a-zA-Z0-9]+)/);
+
+	if (!match) {
+		// console.error("Couldn't username/repo for link ", link);
+		return {
+			username: undefined,
+			repo: undefined,
+		};
+	}
+
+	return {
+		username: match[1],
+		repo: match[2],
+	};
 }
 
 function get_builds(merge_status_list) {
@@ -45,11 +76,23 @@ function get_build(merge_status_item) {
 	}
 	link = link.href;
 
+	// Find the username and repo for the build
+	let detail = get_detail_element(merge_status_item);
+	let username = undefined;
+	let repo = undefined;
+	if (detail) {
+		let owner = get_job_owner(detail.href);
+		username = owner.username;
+		repo = owner.repo;
+	}
+
 	return {
 		element: merge_status_item,
 		name: merge_status_item.querySelector('strong').innerText.trim(),
 		link: link,
 		id: get_build_id(link),
+		username: username,
+		repo: repo,
 		status: get_status(merge_status_item)
 	};	
 }

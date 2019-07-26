@@ -1,3 +1,7 @@
+// Converts GitHub's preview of job status for each commit from an icon with
+// a popover to a progress bar with red/yellow/green for failed/pending/success
+
+
 let GITHUB_OAUTH = undefined;
 chrome.storage.local.get('config', (container) => {
 	GITHUB_OAUTH = container.config['GitHub Token'];

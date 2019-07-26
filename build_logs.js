@@ -1,27 +1,26 @@
+// Finds all logs on a GitHub Pull Request page, adds click events to expand and
+// show details about the job
+
 'use strict'
 let CIRCLECI_TOKEN = undefined;
-let repo = undefined;
-let username = undefined;
-let log_lines = undefined;
-let vcs = 'github';
+let NUM_TAIL_LINES = undefined;
+
 let current_display = undefined;
 let current_spinner = undefined;
-let line_regex_default = undefined;
-let high_signal_builds = undefined;
 
-chrome.storage.local.get('info', (items) => {
-	CIRCLECI_TOKEN = items.info.token;
-	username = items.info.username;
-	repo = items.info.repo;
-	log_lines = items.info.num_lines;
-	line_regex_default = items.info.regex_placeholder;
-	high_signal_builds = items.info.high_signal_builds;
+// let high_signal_builds = undefined;
 
-	if (high_signal_builds) {
-		high_signal_builds = high_signal_builds.split("\n").map((item) => item.trim());
-	} else {
-		high_signal_builds = "";
-	}
+chrome.storage.local.get('config', (container) => {
+	CIRCLECI_TOKEN = container.config['CircleCI Token'];
+	NUM_TAIL_LINES = parseInt(container.config['Tail Lines']);
+
+	// high_signal_builds = items.info.high_signal_builds;
+
+	// if (high_signal_builds) {
+	// 	high_signal_builds = high_signal_builds.split("\n").map((item) => item.trim());
+	// } else {
+	// 	high_signal_builds = "";
+	// }
 });
 
 let build_has_pending_request = {};
@@ -176,15 +175,14 @@ function merge_status_item_added(merge_status_item, recurse) {
 
 	let build_text = merge_status_item.querySelector('div [title]').querySelector('strong');
 	if (build_text && build.name.includes('ci/circleci: ')) {
-		console.log(build)
 		build_text.innerText = build.name.replace('ci/circleci: ', '');
 	}
 	// build_text.outerText = 'hello'
 
-	if (build.status === 'failed' && high_signal_builds && high_signal_builds.includes(build.name)) {
-		// Set red background for important build failure
-		merge_status_item.style['background-color'] = '#ff000030';
-	}
+	// if (build.status === 'failed' && high_signal_builds && high_signal_builds.includes(build.name)) {
+	// 	// Set red background for important build failure
+	// 	merge_status_item.style['background-color'] = '#ff000030';
+	// }
 
 	if (isSupported(build) && build.status === 'failed') {
 		// Show what build step failed
@@ -220,21 +218,22 @@ function merge_status_item_added(merge_status_item, recurse) {
 	details_link.href = details_url.href;
 }
 
-function circle_ci_request(build, obj) {
+function circle_ci_request(build, options) {
+	// If there's an old request for this build, quit it
 	if (build_has_pending_request[build.name]) {
 		build_has_pending_request[build.name].abort();
 	}
-	let xhr = request(build_info_url(build.id), {
+	let xhr = request(build_info_url(build), {
 		success: (result) => {
 			build_has_pending_request[build.name] = false;
-			if (obj.success) {
-				obj.success(result);
+			if (options.success) {
+				options.success(result);
 			}
 		},
 		error: (e) => {
 			build_has_pending_request[build.name] = false;
-			if (obj.error) {
-				obj.error(e);
+			if (options.error) {
+				options.error(e);
 			}			
 		}
 	});
@@ -277,7 +276,7 @@ function show_failed_build_step(merge_status_item, build) {
 			merge_status_item.setAttribute('circleci_result', JSON.stringify(small_result));
 		},
 		error: (e) => {
-			console.error("Could not get build info for:");
+			console.error("CircleCI API request failed for", build.name);
 			console.error(merge_status_item);
 		}
 	});
@@ -353,6 +352,7 @@ function show_build(action_index, is_updating, merge_status_item) {
 	}
 
 	circle_ci_request(this, {
+		// If there's an old request for this build, quit it
 		success: (result) => {
 			result = JSON.parse(result);
 			get_and_show_log.call(this, result, action_index);
@@ -384,19 +384,19 @@ function format_build_log(text) {
 
 
 function format_test_log(text) {
-	let new_text = "";
-	text.split("\n").forEach(line => {
-		let match = line.match(/^([a-zA-Z]+ \d+ \d+:\d+:\d+ )(.*)/);
-		if (!match || match.length < 3)  {
-			new_text += "\n";
-			return;
-		}
-		let timestamp = match[1];
-		let rest = match[2];
-		new_text += timestamp + Prism.highlight(rest, Prism.languages.python, 'python');
-		new_text += "\n";
-	});
-	text = new_text;
+	// let new_text = "";
+	// text.split("\n").forEach(line => {
+	// 	let match = line.match(/^([a-zA-Z]+ \d+ \d+:\d+:\d+ )(.*)/);
+	// 	if (!match || match.length < 3)  {
+	// 		new_text += "\n";
+	// 		return;
+	// 	}
+	// 	let timestamp = match[1];
+	// 	let rest = match[2];
+	// 	new_text += timestamp + Prism.highlight(rest, Prism.languages.python, 'python');
+	// 	new_text += "\n";
+	// });
+	// text = new_text;
 
 
 	// Highlight FAIL and ERROR lines red
@@ -417,7 +417,7 @@ function format_test_log(text) {
 function build_display(build, raw_log, steps, selected_step, is_err) {
 	let container = document.createElement("div");
 	let div = document.createElement("div");
-	let processed_log = process_log(raw_log);
+	let processed_log = remove_newlines(raw_log);
 	if (!is_err) {
 		let next_btn = build_btn({
 			text: "Prev 20 lines",
@@ -482,15 +482,14 @@ function build_display(build, raw_log, steps, selected_step, is_err) {
 		// Grep log
 		let grep_div = document.createElement("div");
 		grep_div.classList.add("grep_div");
-		let placeholder = line_regex_default || '';
-		grep_div.innerHTML = "<span> Regex</span> <input id='log_grep' value='" + placeholder + "'>";
+		grep_div.innerHTML = "<span> Regex</span> <input id='log_grep' value=''>";
 		grep_div.appendChild(build_btn({
 				text: "Go",
 				click: () => {
 					const text = document.getElementById('log_grep').value;
 					let out = undefined;
 					if (text === '') {
-						out = nFromEnd(processed_log, '\n', log_lines);
+						out = nFromEnd(processed_log, '\n', NUM_TAIL_LINES);
 					} else {
 						const lines = processed_log.split("\n");
 						const regex = new RegExp(text);
@@ -523,7 +522,7 @@ function build_display(build, raw_log, steps, selected_step, is_err) {
 	div.classList.add('log-actions');
 	container.appendChild(div);
 
-	let pre = get_log_div(processed_log, log_lines);
+	let pre = get_log_div(processed_log, NUM_TAIL_LINES);
 	// document.createElement("div");
 	// pre.style['white-space'] = 'pre';
 	// pre.style['font-family'] = '"Lucida Console", Monaco, monospace';
@@ -543,21 +542,6 @@ function build_display(build, raw_log, steps, selected_step, is_err) {
 
 	return container;
 }
-
-// function add_modal() {
-// 	let div = document.createElement("div");
-
-// 	div.innerHTML = `<p>Settings</p>
-// 	<label>Number of tail lines</label>
-// 	<input>
-// 	<label>Previous lines increment</label>
-// 	<input>
-// 	<button id="modal_save">Save</button><button id="modal_save">Close</button>`;
-// 	div.classList.add("circleci-viewer-modal");
-
-
-// 	document.body.appendChild(div);
-// }
 
 function clear_current_display() {
 	let old = current_display;
@@ -582,12 +566,14 @@ function build_spinner(build) {
 	return p;
 }
 
-function build_info_url(build_id) {
-	return `https://circleci.com/api/v1.1/project/${vcs}/${username}/${repo}/${build_id}?circle-token=${CIRCLECI_TOKEN}`;
+function build_info_url(build) {
+	let vcs = 'github';
+	return `https://circleci.com/api/v1.1/project/${vcs}/${build.username}/${build.repo}/${build.id}?circle-token=${CIRCLECI_TOKEN}`;
 }
 
 function build_retry_url(build_id) {
-	return `https://circleci.com/api/v1.1/project/${vcs}/${username}/${repo}/${build_id}/ssh?circle-token=${CIRCLECI_TOKEN}`;
+	let vcs = 'github';
+	return `https://circleci.com/api/v1.1/project/${vcs}/${build.username}/${build.repo}/${build.id}/ssh?circle-token=${CIRCLECI_TOKEN}`;
 }
 
 function nthFromEnd(str, pat, n) {
@@ -610,13 +596,7 @@ function nFromEnd(str, pat, n) {
 }
 
 function isSupported(build) {
-	if (build.name.includes('travis-ci')) {
-		return false;
-	}
-	if (build.link.includes("jenkins/")) {
-		return false;
-	}
-	return true;
+	return build.name.includes('circleci');
 }
 
 function get_error_text(build) {
@@ -643,10 +623,13 @@ function default_step(build_result) {
 	return false;
 }
 
-function process_log(raw, is_full) {
+function remove_newlines(raw, is_full) {
+	// Cleanup all carriage return-containing newlines to be UNIX style
 	let tail = raw.replace(/\/r/, '');
 	tail = tail.replace(/\\r\\n/g, '\n');
 	tail = tail.replace(/(\\r)|(\\n)/g, '\n');
+
+	// Replace blank lines with just 1 newline
 	return tail.replace(/\n\s*\n/g, '\n');
 }
 
