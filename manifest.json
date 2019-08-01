@@ -15,14 +15,19 @@
 		"page": "options.html",
 		"chrome_style": true
 	},
+	"background": {
+		"scripts": ["remove_cors.js"],
+		"persistent": true
+	},
 	"content_scripts": [{
 		"matches": [
 			"*://github.com/*/pull*"
 		],
 		"js": [
 			"lib.js",
-			"ansi_up.js",
-			"prism.js",
+			"azure.js",
+			"jenkins.js",
+			"circleci.js",
 			"build_info.js",
 			"build_logs.js",
 			"unminimize_comments.js"
@@ -46,6 +51,7 @@
 	"permissions": [
 		"activeTab",
 		"storage",
+		"https://ci.pytorch.org/jenkins/*",
 		"https://github.com/*",
 		"https://circleci.com/*",
 		"https://*.amazonaws.com/"

@@ -2,26 +2,9 @@
 // show details about the job
 
 'use strict'
-let CIRCLECI_TOKEN = undefined;
-let NUM_TAIL_LINES = undefined;
 
 let current_display = undefined;
 let current_spinner = undefined;
-
-// let high_signal_builds = undefined;
-
-chrome.storage.local.get('config', (container) => {
-	CIRCLECI_TOKEN = container.config['CircleCI Token'];
-	NUM_TAIL_LINES = parseInt(container.config['Tail Lines']);
-
-	// high_signal_builds = items.info.high_signal_builds;
-
-	// if (high_signal_builds) {
-	// 	high_signal_builds = high_signal_builds.split("\n").map((item) => item.trim());
-	// } else {
-	// 	high_signal_builds = "";
-	// }
-});
 
 let build_has_pending_request = {};
 
@@ -53,23 +36,35 @@ function set_styles(merge_status_list) {
 
 function try_reattach_old_display(merge_status_list) {
 	// Determine if current_display was just deleted
-	if (!document.querySelector('#circleci_viewer_display') && current_display) {
-		// Edit current display with 'maybe stale' warning
-		current_display.querySelector('#circleci_viewer_freshness').classList.add("tooltip");
-		current_display.querySelector('#circleci_viewer_freshness').innerHTML = "<span class='tooltiptext'>The build status has been updated, but this log has not been</span>";
-		current_display.getAttribute('circleci_build_id');
+	if (!document.querySelector('#ci_viewer_display') && current_display) {
+		let status_name = current_display.getAttribute('ci_viewer_tag');
 	
 		// Find build to put it on
-		let new_build = get_builds(merge_status_list).find((build) => {
-			return build.id === current_display.getAttribute('circleci_build_id');
-		});
-		if (!new_build) {
+		console.log(merge_status_list);
+		let items = merge_status_list.querySelectorAll('.merge-status-item');
+		let new_merge_item = undefined;
+		for (let i = 0; i < items.length; i++) {
+			let item = items[i];
+
+			let item_name = item.querySelector('div [title] strong').innerText;
+			if (item_name == status_name) {
+				// This is the one to reattach it to
+				new_merge_item = item;
+			}
+		}
+
+		if (!new_merge_item) {
 			console.error("Could not find build for old display");
 			return;
 		}
 			
 		// Re-add element to the DOM
-		insert_after(new_build.element, current_display);
+		insert_after(new_merge_item, current_display);
+		console.log("Re-attached...");
+
+		// Edit current display with 'maybe stale' warning
+		current_display.querySelector('#circleci_viewer_freshness').classList.add("tooltip");
+		current_display.querySelector('#circleci_viewer_freshness').innerHTML = "<span class='tooltiptext'>The build status has been updated, but this log has not been</span>";
 	}
 }
 
@@ -159,8 +154,29 @@ function merge_status_item_added(merge_status_item, recurse) {
 	// Set page styles, add rerun all build button
 	per_page_actions(merge_status_item.closest('.merge-status-list'));
 
-	if (merge_status_item.getAttribute('circle_ci_viewer_has_seen')) {
+	if (merge_status_item.getAttribute('ci_viewer_display')) {
 		// This one has already had a click event attached, ignore it
+		return;
+	}
+
+	let has_seen = merge_status_item.getAttribute('circle_ci_viewer_has_seen');
+	if (has_seen) {
+		return;
+	}
+
+
+	let status_name = merge_status_item.querySelector('div [title]').querySelector('strong').innerText;
+	let is_circleci = status_name.includes('ci/circleci');
+	let item = undefined;
+	// console.log(status_name, status_name.includes('ci/circleci'))
+	if (status_name.includes('ci/circleci')) {
+		item = new CircleCIItem(merge_status_item);
+	} else if (status_name.startsWith('pr/')) {
+		item = new JenkinsItem(merge_status_item);
+	} else if (status_name.startsWith('pytorch.pytorch')) {
+		item = new AzureItem(merge_status_item);
+	} else {
+		// Not supported, don't do anything
 		return;
 	}
 
@@ -184,10 +200,10 @@ function merge_status_item_added(merge_status_item, recurse) {
 	// 	merge_status_item.style['background-color'] = '#ff000030';
 	// }
 
-	if (isSupported(build) && build.status === 'failed') {
-		// Show what build step failed
-		show_failed_build_step(merge_status_item, build);
-	}
+	// if (isSupported(build) && build.status === 'failed') {
+	// 	// Show what build step failed
+	// 	show_failed_build_step(merge_status_item, build);
+	// }
 
 	merge_status_item.addEventListener('click', (event) => {
 		// If user clicks 'details', don't do anything
@@ -195,18 +211,39 @@ function merge_status_item_added(merge_status_item, recurse) {
 			return;
 		}
 
-		let old_display = document.querySelector('#circleci_viewer_display');
+		let old_display = document.querySelector('#ci_viewer_display');
 		if (old_display) {
+			// If the same build is clicked twice, collapse it and don't do
+			// anything else
 			if (old_display.previousSibling === merge_status_item) {
-				// Collapse old display
 				clear_current_display();
 				return;				
 			}
 		}
+		clear_current_display();
 
-		// Build log display and show
-		show_build.call(build, undefined, undefined, merge_status_item);
+		// Remove 'Loading build ...' text if it's on the page
+		remove(current_spinner);
 
+		// Put up new loading text
+		current_spinner = build_spinner(build);
+		insert_after(merge_status_item, current_spinner);
+
+		// This is the div with all the stuff for the log, now attach it
+		item.getDisplay((display) => {
+			// Done loading, remove the loading text
+			remove(current_spinner);
+
+			// Set display as global new display
+			display.setAttribute('id', 'ci_viewer_display');
+			// Tag it with the name so we can find it later if necessary
+			display.setAttribute('ci_viewer_tag', status_name);
+			current_display = display;
+
+			insert_after(merge_status_item, display);
+
+			item.afterShowing(display);
+		});
 	});
 
 	merge_status_item.setAttribute('circle_ci_viewer_has_seen', true);
@@ -214,333 +251,13 @@ function merge_status_item_added(merge_status_item, recurse) {
 	// Make link have 'fullLogs=true' so that all build steps are shown
 	let details_link = merge_status_item.querySelector('a.status-actions');
 	let details_url = new URL(details_link.href);
-	details_url.searchParams.set('fullLogs', 'true');
-	details_link.href = details_url.href;
+	// details_url.searchParams.set('fullLogs', 'true');
+	// details_link.href = details_url.href;
 }
 
-function circle_ci_request(build, options) {
-	// If there's an old request for this build, quit it
-	if (build_has_pending_request[build.name]) {
-		build_has_pending_request[build.name].abort();
-	}
-	let xhr = request(build_info_url(build), {
-		success: (result) => {
-			build_has_pending_request[build.name] = false;
-			if (options.success) {
-				options.success(result);
-			}
-		},
-		error: (e) => {
-			build_has_pending_request[build.name] = false;
-			if (options.error) {
-				options.error(e);
-			}			
-		}
-	});
-	build_has_pending_request[build.name] = xhr;
-}
-
-function show_failed_build_step(merge_status_item, build) {
-	// Adds a 'circleci_result' attribute to the 'div.merge-status-item', which
-	// lets fetch_log skip the redundant request to CircleCI
-	let test_status = merge_status_item.querySelector('div.text-gray');
-
-	// // 2nd child node is the text "— Your tests failed on CircleCI"
-	circle_ci_request(build, {
-		success: (result) => {
-			result = JSON.parse(result);
-
-			let last_step = default_step(result);
-			let log_url = result.steps[last_step].actions[0].output_url;
-
-			let failed_span = document.createElement('span');
-			failed_span.innerText = "— Your tests failed on CircleCI";
-
-			let reason_span = document.createElement('span');
-			reason_span.style['font-weight'] = 'bold';
-			reason_span.innerText = " (" + result.steps[last_step].name + ")";
-
-			// let text = "— Your tests failed on CircleCI"
-			// 	+ " (" + result.steps[last_step].name + ")";
-
-			test_status.removeChild(test_status.childNodes[2]);
-			test_status.appendChild(failed_span);
-			test_status.appendChild(reason_span);
-			// test_status.appendChild(document.createTextNode(text));
-
-			let small_result = {
-				steps: result.steps,
-				lifecycle: result.lifecycle
-			};
-
-			merge_status_item.setAttribute('circleci_result', JSON.stringify(small_result));
-		},
-		error: (e) => {
-			console.error("CircleCI API request failed for", build.name);
-			console.error(merge_status_item);
-		}
-	});
-}
-
-function show_log(raw_log, steps, selected_step, is_err) {
-	remove(current_spinner);
-	remove(current_display);
-
-	current_display = build_display(this, raw_log, steps, selected_step, is_err);
-	current_display.setAttribute('circleci_build_id', this.id);
-	current_display.scrollIntoView(true);
-	current_display.id = 'circleci_viewer_display';
-	insert_after(this.element, current_display);
-}
-
-function get_and_show_log(result, selected_step, error) {
-	let show_this_log = show_log.bind(this);
-
-
-	if (error) {
-		show_this_log("    " + error, [], -1, true);
-		return;
-	}
-
-	// If a particular build step is selected, use that. If not, use the
-	// last one with an output log url
-	if (selected_step === undefined) {
-		selected_step = default_step(result);				
-	}
-
-	// If no steps have output logs or no steps have run, don't do anything
-	if (selected_step === false || result.steps.length == 0) {
-		let output = "No build steps have run for build " + this.id;
-		if (result.lifecycle) {
-			output += " (status: " + result.lifecycle + ")";				
-		}
-		show_this_log("    " + output, [], -1, true);
-		return;
-	}
-
-	let log_url = result.steps[selected_step].actions[0].output_url;
-	request(log_url, {
-		success: (log) => {
-			show_this_log(log, result.steps, selected_step, false);
-		},
-		error: () => {
-			show_this_log("   Could not get output log for this step", result.steps, selected_step, true);
-		}
-	});
-}
-
-
-function show_build(action_index, is_updating, merge_status_item) {
-	clear_current_display();
-	// Remove 'Loading build ...' text if it's on the page
-	remove(current_spinner);
-
-	// Put up new loading text
-	current_spinner = build_spinner(this);
-	insert_after(this.element, current_spinner);
-
-
-	if (merge_status_item && merge_status_item.hasAttribute('circleci_result')) {
-		let result = JSON.parse(merge_status_item.getAttribute('circleci_result'));
-		get_and_show_log.call(this, result, action_index);
-		return;
-	}
-
-	if (!isSupported(this)) {
-		get_and_show_log.call(this, {steps: []}, -1, get_error_text(this));
-		return;
-	}
-
-	circle_ci_request(this, {
-		// If there's an old request for this build, quit it
-		success: (result) => {
-			result = JSON.parse(result);
-			get_and_show_log.call(this, result, action_index);
-		},
-		error: (e) => {
-			get_and_show_log.call(this, {steps: []}, -1, get_error_text(this));
-		}
-	});
-}
-
-function get_log_div(processed_log, log_lines) {
-	let pre = document.createElement("div");
-	pre.style['white-space'] = 'pre';
-	pre.style['font-family'] = '"Lucida Console", Monaco, monospace';
-
-	let shown_log = nFromEnd(processed_log, '\n', log_lines);
-	shown_log = format_test_log(shown_log);
-
-	pre.setAttribute('num_lines', log_lines);
-	pre.innerHTML = shown_log;
-	pre.classList.add('log_viewer');
-
-	return pre;
-}
 
 function format_build_log(text) {
 	return text;
-}
-
-
-function format_test_log(text) {
-	// let new_text = "";
-	// text.split("\n").forEach(line => {
-	// 	let match = line.match(/^([a-zA-Z]+ \d+ \d+:\d+:\d+ )(.*)/);
-	// 	if (!match || match.length < 3)  {
-	// 		new_text += "\n";
-	// 		return;
-	// 	}
-	// 	let timestamp = match[1];
-	// 	let rest = match[2];
-	// 	new_text += timestamp + Prism.highlight(rest, Prism.languages.python, 'python');
-	// 	new_text += "\n";
-	// });
-	// text = new_text;
-
-
-	// Highlight FAIL and ERROR lines red
-	let regex = /(FAIL.*)|(ERROR.*)|(self\.assert.*)|([A-Za-z]*Error.*)/g
-	text = text.replace(regex, (str) => {
-		return "<span style='font-weight: bold;background-color: rgba(255, 40, 40, 0.2);padding: 1px 2px 1px 6px;'>" + str + "</span>";
-	});
-
-	// Replace python error names with friendlier ones that can actually be copy-pasted
-	let test_regex = /((ERROR: )|(FAIL: ))([a-zA-Z0-9_]+) \([a-zA-Z0-9_]+\.([a-zA-Z0-9_]+)\)/g
-	text = text.replace(test_regex, (full_match, fail_type, something, something_else, test_name, module_name) => {
-		return fail_type + module_name + " " + test_name;
-	});
-
-	return text;
-}
-
-function build_display(build, raw_log, steps, selected_step, is_err) {
-	let container = document.createElement("div");
-	let div = document.createElement("div");
-	let processed_log = remove_newlines(raw_log);
-	if (!is_err) {
-		let next_btn = build_btn({
-			text: "Prev 20 lines",
-			click: () => {
-				let parent = pre.parentNode;
-				let old_num_lines = parseInt(pre.getAttribute('num_lines'));
-				let new_num_lines = old_num_lines + 20;
-
-				parent.removeChild(pre);
-				pre = get_log_div(processed_log, new_num_lines);
-				parent.appendChild(pre);
-				parent.appendChild(pre);
-			}
-		});
-
-		div.appendChild(build_btn({
-			text: "View full log",
-			click: () => {
-				next_btn.parentNode.removeChild(next_btn);
-				pre.removeChild(pre.firstChild);
-				pre.setAttribute('num_lines', NaN);
-				let text_node = document.createTextNode(processed_log);
-				pre.appendChild(text_node);
-			}
-		}));
-
-		div.appendChild(build_btn({
-			text: "Retry build",
-			click: () => {
-				retry_build(build);
-			}
-		}));
-
-		div.appendChild(next_btn);
-	}
-
-	let select_index = selected_step;
-	let actions = steps.map((step, index) => {
-		return {
-			value: step.name,
-			selected: index === selected_step
-		};
-	});
-
-	if (actions.length > 0) {
-		let span = document.createElement("span");
-		span.innerHTML = "Build step (<span id='build_curr'>0</span> / <span id='build_total'>0</span>): ";
-
-		let total_span = span.querySelector("#build_total");
-		let i_span = span.querySelector("#build_curr");
-
-		total_span.innerText = actions.length;
-		i_span.innerText = select_index + 1;
-
-		div.appendChild(span);
-
-		div.appendChild(build_dropdown(true, actions, (event) => {
-			let i = event.target.selectedIndex;
-			show_build.call(build, i, true);
-		}));
-
-		// Grep log
-		let grep_div = document.createElement("div");
-		grep_div.classList.add("grep_div");
-		grep_div.innerHTML = "<span> Regex</span> <input id='log_grep' value=''>";
-		grep_div.appendChild(build_btn({
-				text: "Go",
-				click: () => {
-					const text = document.getElementById('log_grep').value;
-					let out = undefined;
-					if (text === '') {
-						out = nFromEnd(processed_log, '\n', NUM_TAIL_LINES);
-					} else {
-						const lines = processed_log.split("\n");
-						const regex = new RegExp(text);
-						let out_lines = [];
-						for (let i = 0; i < lines.length; i++) {
-							if (regex.test(lines[i])) {
-								out_lines.push(lines[i]);
-							}
-						}
-						out = out_lines.join("\n");
-					}
-
-					pre.removeChild(pre.firstChild);
-					pre.setAttribute('num_lines', NaN);
-					let text_node = document.createTextNode(out);
-					pre.appendChild(text_node);
-				}
-			}));
-	    div.appendChild(grep_div);
-	}
-
-	// Used for denoting when current_display has become stale
-	let freshness = document.createElement("span");
-	freshness.id = 'circleci_viewer_freshness';
-	freshness.style.color = '#7d7d00';
-	freshness.style['font-weight'] = 'bold';
-	div.appendChild(freshness);
-
-	// Add log actions
-	div.classList.add('log-actions');
-	container.appendChild(div);
-
-	let pre = get_log_div(processed_log, NUM_TAIL_LINES);
-	// document.createElement("div");
-	// pre.style['white-space'] = 'pre';
-	// pre.style['font-family'] = '"Lucida Console", Monaco, monospace';
-	// let regex = /(FAIL.*)|(ERROR.*)|(self\.assert.*)|([A-Za-z]*Error.*)/g
-	// let shown_log = nFromEnd(processed_log, '\n', log_lines);
-	// shown_log = escape_html(shown_log);
-	// shown_log = shown_log.replace(regex, (str) => {
-	// 	return "<span style='color: red; font-weight: 500'>" + str + "</span>";
-	// });
-	// pre.setAttribute('num_lines', log_lines);
-	// pre.innerHTML = shown_log;
-	// // pre.appendChild(document.createTextNode(nFromEnd(processed_log, '\n', log_lines)));
-	// pre.classList.add('log_viewer');
-
-	// Add log content
-	container.appendChild(pre);
-
-	return container;
 }
 
 function clear_current_display() {
@@ -554,7 +271,7 @@ function retry_build(build, callback) {
 	if (callback === undefined) {
 		callback = clear_current_display;
 	}
-	request(build_retry_url(build.id), {
+	request(build.retry_url, {
 		method: "POST",
 		success: callback
 	});
@@ -564,16 +281,6 @@ function build_spinner(build) {
 	let p = document.createElement("p");
 	p.appendChild(document.createTextNode("Loading build " + build.id));
 	return p;
-}
-
-function build_info_url(build) {
-	let vcs = 'github';
-	return `https://circleci.com/api/v1.1/project/${vcs}/${build.username}/${build.repo}/${build.id}?circle-token=${CIRCLECI_TOKEN}`;
-}
-
-function build_retry_url(build_id) {
-	let vcs = 'github';
-	return `https://circleci.com/api/v1.1/project/${vcs}/${build.username}/${build.repo}/${build.id}/ssh?circle-token=${CIRCLECI_TOKEN}`;
 }
 
 function nthFromEnd(str, pat, n) {
