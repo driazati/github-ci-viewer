@@ -79,7 +79,7 @@ function escape_html(unsafe) {
          .replace(/>/g, "&gt;")
          // .replace(/"/g, "&quot;")
          // .replace(/'/g, "&#039;");
- }
+}
 
 function request(url, opts) {
 	const method = opts.method || 'GET';

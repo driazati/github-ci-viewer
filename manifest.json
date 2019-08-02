@@ -1,16 +1,14 @@
 {
 	"manifest_version": 2,
 
-	"name": "CircleCI Log Viewer",
-	"short_name": "CircleCI Log Viewer",
-	"description": "View CircleCI Logs directly on GitHub",
-	"version": "1.0.23",
+	"name": "GitHub CI Log Viewer",
+	"short_name": "GitHub CI Log Viewer",
+	"description": "View CircleCI/Azure/Jenkins Logs directly on GitHub",
+	"version": "2.0",
 	"author": "pytorch",
-
 	"icons": { "16": "icons/icon16.png",
 		"48": "icons/icon48.png",
 		"128": "icons/icon128.png" },
-
 	"options_ui": {
 		"page": "options.html",
 		"chrome_style": true
@@ -21,32 +19,20 @@
 	},
 	"content_scripts": [{
 		"matches": [
-			"*://github.com/*/pull*"
+			"*://github.com/*/*"
 		],
 		"js": [
 			"lib.js",
+			"scrollview.js",
 			"azure.js",
+			"unsupported.js",
 			"jenkins.js",
 			"circleci.js",
 			"build_info.js",
-			"build_logs.js",
-			"unminimize_comments.js"
+			"build_logs.js"
 		],
-		"css": ["prism.css", "widescreen.css"],
+		"css": ["widescreen.css"],
 		"run_at": "document_start"
-	}, {
-		"matches": [
-			"*://github.com/*/pulls*",
-			"*://github.com/pulls*"
-		],
-		"js": ["lib.js", "show_build_status.js"],
-		"run_at": "document_end"
-	}, {
-		"matches": [
-			"*://github.com/*"
-		],
-		"js": ["disable_pjax.js"],
-		"run_at": "document_end"
 	}],
 	"permissions": [
 		"activeTab",

@@ -1,45 +1,8 @@
-let _unused_old_properties = {
-	// {
-	// 	'name': 'disable_pjax',
-	// 	'title': 'Disable <a href="https://github.blog/2011-04-09-issues-2-0-the-next-generation/#pjax-next-generation-partial-page-loads">pjax</a> (enter "1" to disable)',
-	// 	'short': 'Disable pjax'
-	// },
-	// {
-	// 	'name': 'high_signal_builds',
-	// 	'title': 'high signal builds',
-	// 	'short': 'high signal builds',
-	// 	'type': 'textarea'
-	// },
-	// {
-	// 	'name': 'regex_placeholder',
-	// 	'title': 'Default line regex',
-	// 	'short': 'Default line regex'
-	// },
-	// {
-	// 	'name': 'username',
-	// 	'short': 'Username'
-	// },
-	// {
-	// 	'name': 'repo',
-	// 	'title': 'CircleCI Repo',
-	// },
-};
-
 let properties = [
 	{
 		'name': 'CircleCI Token',
 		'title': 'CircleCI OAuth Token <a href="https://circleci.com/account/api">(get one here)</a>',
 		'desc': "This is needed to make requests to the CircleCI API"
-	},
-	{
-		'name': 'Tail Lines',
-		'title': 'Number of tail lines to show',
-		'default': 100
-	},
-	{
-		'name': 'GitHub Token',
-		'title': 'GitHub OAuth Token <a href="https://github.com/settings/tokens">(get one here, add "repo" permissions)</a>',
-		'desc': 'This is needed to make requests to the GitHub API'
 	},
 ];
 

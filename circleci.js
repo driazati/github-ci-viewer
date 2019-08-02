@@ -1,9 +1,7 @@
 let CIRCLECI_TOKEN = undefined;
-let NUM_TAIL_LINES = undefined;
 
 chrome.storage.local.get('config', (container) => {
 	CIRCLECI_TOKEN = container.config['CircleCI Token'];
-	NUM_TAIL_LINES = parseInt(container.config['Tail Lines']);
 });
 
 
@@ -100,70 +98,22 @@ function latest_step_with_log(api_response) {
 }
 
 function format_test_log(text) {
-	// Syntax highlight
-	// let new_text = "";
-	// text.split("\n").forEach(line => {
-	// 	let match = line.match(/^([a-zA-Z]+ \d+ \d+:\d+:\d+ )(.*)/);
-	// 	if (!match || match.length < 3)  {
-	// 		new_text += "\n";
-	// 		return;
-	// 	}
-	// 	let timestamp = match[1];
-	// 	let rest = match[2];
-	// 	new_text += timestamp + Prism.highlight(rest, Prism.languages.python, 'python');
-	// 	new_text += "\n";
-	// });
-	// text = new_text;
-
-
 	// Highlight FAIL and ERROR lines red
 	let regex = /(FAIL.*)|(ERROR.*)|(self\.assert.*)|([A-Za-z]*Error.*)/g
 	text = text.replace(regex, (str) => {
 		return "<span style='font-weight: bold;background-color: rgba(255, 40, 40, 0.2);padding: 1px 2px 1px 6px;'>" + str + "</span>";
 	});
 
-	// Replace python error names with friendlier ones that can actually be copy-pasted
-	// let test_regex = /((ERROR: )|(FAIL: ))([a-zA-Z0-9_]+) \([a-zA-Z0-9_]+\.([a-zA-Z0-9_]+)\)/g
-	// text = text.replace(test_regex, (full_match, fail_type, something, something_else, test_name, module_name) => {
-	// 	return fail_type + module_name + " " + test_name;
-	// });
-
 	return text;
 }
 
-function get_log_div(processed_log, log_lines) {
-	let pre = document.createElement("div");
-	pre.style['white-space'] = 'pre';
-	pre.style['font-family'] = '"Lucida Console", Monaco, monospace';
-
-	// Show the whole thing always, let browser scrolling handle pagination
-	// stuff
-	let shown_log = processed_log;
-	// if (log_lines === false) {
-	// 	// Show the entire thing
-	// 	shown_log = processed_log;
-	// } else {
-	// 	// Only show `log_lines` from the tail
-	// 	shown_log = nFromEnd(processed_log, '\n', log_lines);	
-	// }
-	shown_log = format_test_log(shown_log);
-
-	pre.setAttribute('num_lines', log_lines);
-	pre.style['overflow'] = 'scroll';
-	pre.style['max-height'] = '80em';
-	// pre.style['max-height'] = '800px';
-	pre.innerHTML = shown_log.trim();
-	pre.classList.add('log_viewer');
-
-	return pre;
-}
 
 function circle_ci_request(build, options) {
 	// If there's an old request for this build, quit it
 	if (build_has_pending_request[build.name]) {
 		build_has_pending_request[build.name].abort();
 	}
-	console.log("Requesting ", build.info_url)
+	// console.log("Requesting ", build.info_url)
 	let xhr = request(build.info_url, {
 		success: (result) => {
 			build_has_pending_request[build.name] = false;
@@ -185,6 +135,8 @@ function circle_ci_request(build, options) {
 function get_text_display(text) {
 	let div = document.createElement("div");
 	div.innerText = text;
+	div.style.padding = "10px";
+	div.style['background-color'] = '#ffd3d3';
 	return div;
 }
 
@@ -195,7 +147,7 @@ class CircleCIItem {
 		// Setup build-related information
 		this.build = get_build(this.merge_status_item);
 		this.build.info_url = `https://circleci.com/api/v1.1/project/github/${this.build.username}/${this.build.repo}/${this.build.id}?circle-token=${CIRCLECI_TOKEN}`
-		this.build.retry_url = `https://circleci.com/api/v1.1/project/github/${this.build.username}/${this.build.repo}/${this.build.id}?circle-token=${CIRCLECI_TOKEN}`
+		this.build.retry_url = `https://circleci.com/api/v1.1/project/github/${this.build.username}/${this.build.repo}/${this.build.id}/retry?circle-token=${CIRCLECI_TOKEN}`
 
 		if (this.build.status === 'failed') {
 			show_failed_build_step(this.merge_status_item, this.build);			
@@ -235,7 +187,7 @@ class CircleCIItem {
 		let processed_log = remove_newlines(output_log);
 
 		// Add log content
-		let output_log_pre = get_log_div(processed_log, NUM_TAIL_LINES);
+		let log_scroll_view = new ScrollView(processed_log.trim(), format_test_log);
 
 		// Retry build button
 		toolbar.appendChild(build_btn({
@@ -274,49 +226,20 @@ class CircleCIItem {
 					let parent = container.parentNode;
 					parent.replaceChild(new_container, container);
 					container = new_container;
+
+					// TODO: refactor this so this doesn't need to be set manually
+					container.setAttribute('id', 'ci_viewer_display');
+					// Tag it with the name so we can find it later if necessary
+					container.setAttribute('ci_viewer_tag', this.build.name);
+					current_display = container;
 				});
 			}));
 
-			// Add regex search menu
-			let grep_div = document.createElement("div");
-			grep_div.classList.add("grep_div");
-			grep_div.innerHTML = "<span style='margin-left: 4px;'>Regex</span> <input id='log_grep'>";
-			grep_div.appendChild(build_btn({
-					text: "Go",
-					click: () => {
-						const regex_text = document.getElementById('log_grep').value;
-						let grepped_output_log = undefined;
-						if (regex_text === '') {
-							// No regex provided, go back to original log
-							container.removeChild(output_log_pre);
-							output_log_pre = get_log_div(processed_log, NUM_TAIL_LINES);
-							container.appendChild(output_log_pre);
-							return;
-						} else {
-							// Check each line of the full log to see if it matches,
-							// if so add it and display it
-							const lines = processed_log.split("\n");
-							const regex = new RegExp(regex_text);
-							let out_lines = [];
-							for (let i = 0; i < lines.length; i++) {
-								if (regex.test(lines[i])) {
-									out_lines.push(lines[i]);
-								}
-							}
-							grepped_output_log = out_lines.join("\n");
-						}
-	
-						// Removing the existing text node and replace it with a
-						// new one						
-						output_log_pre.innerHTML = '';
-						let text_node = document.createTextNode(grepped_output_log);
-						output_log_pre.appendChild(text_node);
-
-						output_log_pre.setAttribute('num_lines', NaN);
-					}
-				}));
-		    toolbar.appendChild(grep_div);
 		}
+
+		let grep_div = build_grep_action(log_scroll_view);
+	    toolbar.appendChild(grep_div);
+
 
 		// Used for denoting when current_display has become stale
 		let freshness = document.createElement("span");
@@ -330,16 +253,13 @@ class CircleCIItem {
 		container.appendChild(toolbar);
 
 		// Add log data
-		container.appendChild(output_log_pre);
-		output_log_pre.scrollTop = output_log_pre.scrollHeight;
+		container.appendChild(log_scroll_view.element());
 		return container;
 	}
 
 	// Generate some HTML content for this CI job, then pass it to callback to 
 	// handle showing it on the page
 	getDisplay(callback) {
-		console.log("Getting display...");
-
 		let success = (api_response) => {
 			api_response = JSON.parse(api_response);
 			let selected_step = latest_step_with_log(api_response);
@@ -360,8 +280,6 @@ class CircleCIItem {
 
 		if (this.merge_status_item.hasAttribute('circleci_result')) {
 			let attr = this.merge_status_item.getAttribute('circleci_result');
-			// console.log(attr)
-			// let small_response = JSON.parse(attr);
 			success(attr);
 			return;
 		}
@@ -374,13 +292,5 @@ class CircleCIItem {
 				callback(get_text_display(output));
 			}
 		});
-	}
-
-	afterShowing(display) {
-		console.log(display);
-		console.log(display.querySelector('.log_viewer'));
-		let output = display.querySelector('.log_viewer');
-		output.scrollTop = output.scrollHeight;
-
 	}
 }
