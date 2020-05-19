@@ -89,6 +89,16 @@ function latest_step_with_log(api_response) {
 		return false;
 	}
 
+	// First try to find something with "test" as the name since that's
+	// usually what has the actual failures
+	for (let i = steps.length - 1; i >= 0; i--) {
+		if (steps[i].actions[0].output_url && steps[i].name == "Test") {
+			return i;
+		}
+	}
+
+
+	// If that's not there, just grab the last entry with a log
 	for (let i = steps.length - 1; i >= 0; i--) {
 		if (steps[i].actions[0].output_url) {
 			return i;

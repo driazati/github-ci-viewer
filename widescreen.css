@@ -179,3 +179,7 @@ button.discussion-sidebar-toggle {
 .container-lg {
   max-width: 100% !important;
 }
+
+.dropdown-menu.dropdown-menu-w.overflow-hidden {
+  max-width: none;
+}

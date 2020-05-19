@@ -171,6 +171,9 @@ function merge_status_item_added(merge_status_item, recurse) {
 		item = new JenkinsItem(merge_status_item);
 	} else if (build.name.startsWith('pytorch.pytorch')) {
 		item = new AzureItem(merge_status_item);
+	} else if (false && build.name.startsWith('Lint /')) {
+		console.log("making status");
+		item = new GitHubChecksItem(merge_status_item);
 	} else {
 		item = new UnsupportedItem(merge_status_item);
 	}

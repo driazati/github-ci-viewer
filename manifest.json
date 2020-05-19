@@ -1,14 +1,11 @@
 {
 	"manifest_version": 2,
 
-	"name": "GitHub CI Log Viewer",
-	"short_name": "GitHub CI Log Viewer",
+	"name": "GitHub Inline Log Viewer",
+	"short_name": "GitHub Inline Log Viewer",
 	"description": "View CircleCI/Azure/Jenkins Logs directly on GitHub",
-	"version": "2.0",
+	"version": "3.0",
 	"author": "pytorch",
-	"icons": { "16": "icons/icon16.png",
-		"48": "icons/icon48.png",
-		"128": "icons/icon128.png" },
 	"options_ui": {
 		"page": "options.html",
 		"chrome_style": true
@@ -25,6 +22,7 @@
 			"lib.js",
 			"scrollview.js",
 			"azure.js",
+			"github_checks.js",
 			"unsupported.js",
 			"jenkins.js",
 			"circleci.js",
@@ -35,7 +33,6 @@
 		"run_at": "document_start"
 	}],
 	"permissions": [
-		"activeTab",
 		"storage",
 		"https://ci.pytorch.org/jenkins/*",
 		"https://github.com/*",
