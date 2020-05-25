@@ -1,0 +1,31 @@
+.log-actions {
+  background: rgb(211, 255, 196);
+  background: linear-gradient(
+    9deg,
+    rgba(211, 255, 196, 1) 0%,
+    rgba(219, 255, 250, 1) 100%
+  );
+  border-bottom: 1px solid gray;
+  padding-left: 7px;
+  padding-right: 7px;
+}
+
+.line-number {
+  background: #dedede;
+}
+
+.grep_div {
+  display: inline-block;
+}
+
+.log-text {
+  display: table;
+}
+
+.log-text > div {
+  display: table-row;
+}
+
+.log-text > div > span {
+  display: table-cell;
+}

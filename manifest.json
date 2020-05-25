@@ -1,42 +1,38 @@
 {
-	"manifest_version": 2,
+  "manifest_version": 2,
 
-	"name": "GitHub Inline Log Viewer",
-	"short_name": "GitHub Inline Log Viewer",
-	"description": "View CircleCI/Azure/Jenkins Logs directly on GitHub",
-	"version": "3.0",
-	"author": "pytorch",
-	"options_ui": {
-		"page": "options.html",
-		"chrome_style": true
-	},
-	"background": {
-		"scripts": ["remove_cors.js"],
-		"persistent": true
-	},
-	"content_scripts": [{
-		"matches": [
-			"*://github.com/*/*"
-		],
-		"js": [
-			"lib.js",
-			"scrollview.js",
-			"azure.js",
-			"github_checks.js",
-			"unsupported.js",
-			"jenkins.js",
-			"circleci.js",
-			"build_info.js",
-			"build_logs.js"
-		],
-		"css": ["widescreen.css"],
-		"run_at": "document_start"
-	}],
-	"permissions": [
-		"storage",
-		"https://ci.pytorch.org/jenkins/*",
-		"https://github.com/*",
-		"https://circleci.com/*",
-		"https://*.amazonaws.com/"
-	]
+  "name": "GitHub CI Viewer",
+  "short_name": "GitHub CI Viewer",
+  "description": "View logs from your CI directly on GitHub",
+  "version": "1.0",
+  "author": "driazati",
+  "background": {
+    "scripts": ["src/web_request_bridge.js"],
+    "persistent": true
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://github.com/*/*"],
+      "js": [
+        "src/providers/azure.js",
+        "src/providers/github_checks.js",
+        "src/providers/jenkins.js",
+        "src/providers/circleci.js",
+        "src/providers/unsupported.js",
+        "src/lib.js",
+        "src/scrollview.js",
+        "src/build_info.js",
+        "src/main.js"
+      ],
+      "css": ["styles/main.css"],
+      "run_at": "document_start"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "https://ci.pytorch.org/jenkins/*",
+    "https://github.com/*",
+    "https://circleci.com/*",
+    "https://*.amazonaws.com/"
+  ]
 }
